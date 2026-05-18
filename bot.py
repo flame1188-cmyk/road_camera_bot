@@ -36,12 +36,13 @@ from telegram.ext import (
 from config import (
     validate_config,
     ALLOWED_USER_IDS,
-    LLM_API_KEY,
     ENABLE_NEWS_SEARCH,
+    LLM_API_KEY,
+    MAPILLARY_ACCESS_TOKEN,
+    TELEGRAM_BOT_TOKEN,
     VLM_API_KEY,
     VLM_API_URL,
     VLM_MODEL,
-    MAPILLARY_ACCESS_TOKEN,
 )
 from gibdd.api_client import fetch_dtp_data, fetch_regions, extract_accident_cards
 from gibdd.parser import build_file1_data, build_file2_data
