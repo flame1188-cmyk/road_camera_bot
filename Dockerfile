@@ -2,21 +2,32 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
+# Системные зависимости + Chromium (через apt-get, системные пакеты)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    wget \
+    gnupg2 \
+    unzip \
+    libxi6 \
+    libgconf-2-4 \
+    libgtk-3-0 \
+    libx11-xcb1 \
+    libdrm2 \
+    libxss1 \
+    libasound2 \
+    xvfb \
+    chromium \
+    fonts-liberation \
+    fonts-noto-cjk \
+    && rm -rf /var/lib/apt/lists/*
+
+# Проверяем что chromium установлен
+RUN which chromium
+
 COPY requirements.txt .
-
-# --user: ставит пакеты в ~/.local (работает без root)
-RUN pip install --user --no-cache-dir -r requirements.txt
-
-# Добавляем ~/.local/bin в PATH (там лежит playwright CLI)
-ENV PATH="/root/.local/bin:${PATH}"
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PLAYWRIGHT_BROWSERS_PATH=/root/.cache/ms-playwright
-
-# Системные зависимости для Chromium
-RUN playwright install-deps chromium
+RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 RUN find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 
-# Chromium скачивается при старте контейнера
-CMD ["sh", "-c", "playwright install chromium && exec python -B bot.py"]
+ENV PYTHONDONTWRITEBYTECODE=1
+CMD ["python", "-B", "bot.py"]
