@@ -37,14 +37,12 @@ from config import (
     validate_config,
     ALLOWED_USER_IDS,
     ENABLE_NEWS_SEARCH,
-    GOOGLE_MAPS_API_KEY,
     LLM_API_KEY,
     MAPILLARY_ACCESS_TOKEN,
     TELEGRAM_BOT_TOKEN,
     VLM_API_KEY,
     VLM_API_URL,
     VLM_MODEL,
-    YANDEX_API_KEY,
 )
 from gibdd.api_client import fetch_dtp_data, fetch_regions, extract_accident_cards
 from gibdd.parser import build_file1_data, build_file2_data
