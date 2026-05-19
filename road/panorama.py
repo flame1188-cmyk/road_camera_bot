@@ -121,7 +121,7 @@ async def get_mapillary_images(
         "Accept": "application/json",
     }
     params = {
-        "fields": "id,thumb_1024_url,computed_geometry,heading,captured_at,is_pano",
+        "fields": "id,thumb_1024_url,thumb_2048_url,computed_geometry,heading,captured_at,is_pano",
         "bbox": f"{lon - _meters_to_lon(radius, lat)},{lat - _meters_to_lat(radius)},"
                 f"{lon + _meters_to_lon(radius, lat)},{lat + _meters_to_lat(radius)}",
         "limit": str(limit), "is_pano": "true",
@@ -133,22 +133,42 @@ async def get_mapillary_images(
             resp = await client.get(MAPILLARY_SEARCH_URL, params=params, headers=headers)
             resp.raise_for_status()
             data = resp.json()
+
+        logger.info(f"Mapillary ответ: keys={list(data.keys())}, data_type={type(data.get('data')).__name__}")
+
         images = []
         features = data.get("data", [])
         if not features:
             features = data.get("features", [])
+        logger.info(f"Mapillary найдено изображений: {len(features)}")
         for feature in features[:limit]:
+            # Новое API: поля прямо в объекте, не в properties
             props = feature.get("properties", {}) or feature
-            geom = feature.get("geometry", {})
-            coords = geom.get("coordinates", [])
-            img_url = props.get("thumb_1024_url", "")
-            image_b64 = await _download_image_b64(img_url) if img_url else None
-            images.append({
-                "base64": image_b64, "url": img_url,
-                "heading": props.get("heading", 0), "is_pano": props.get("is_pano", False),
-                "distance_m": round(haversine(lat, lon, coords[1] if coords else lat, coords[0] if coords else lon), 1),
-                "source": "mapillary",
-            })
+            geom = feature.get("geometry", feature.get("computed_geometry", {}))
+            coords = geom.get("coordinates", []) if isinstance(geom, dict) else []
+            # Пробуем разные форматы URL
+            img_url = (
+                props.get("thumb_1024_url")
+                or props.get("thumb_2048_url")
+                or feature.get("thumb_1024_url")
+                or feature.get("thumb_2048_url")
+                or ""
+            )
+            if not img_url:
+                logger.warning(f"Mapillary: нет URL у изображения {feature.get('id', '?')}")
+                continue
+            logger.info(f"Mapillary: скачивание {img_url[:80]}...")
+            image_b64 = await _download_image_b64(img_url)
+            if image_b64:
+                images.append({
+                    "base64": image_b64, "url": img_url,
+                    "heading": props.get("heading", 0), "is_pano": props.get("is_pano", False),
+                    "distance_m": round(haversine(lat, lon, coords[1] if len(coords) > 1 else lat, coords[0] if coords else lon), 1),
+                    "source": "mapillary",
+                })
+            else:
+                logger.warning(f"Mapillary: не удалось скачать {img_url[:80]}")
+        logger.info(f"Mapillary: успешно загружено {len(images)} изображений")
         return images
     except httpx.HTTPStatusError as e:
         body = e.response.text[:500]
