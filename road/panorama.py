@@ -104,7 +104,7 @@ async def _download_image_b64(url: str) -> str | None:
 
 
 async def get_mapillary_images(
-    lat: float, lon: float, radius: int = 200, limit: int = 3,
+    lat: float, lon: float, radius: int = 100, limit: int = 1,
 ) -> list[dict[str, Any]]:
     """Получает фотографии с улицы из Mapillary API. Ключ читается из config."""
     cfg = _get_config()
@@ -118,8 +118,9 @@ async def get_mapillary_images(
         "Accept": "application/json",
         "Authorization": f"Bearer {access_token}",
     }
+    # Минимальный набор полей — только id и превью, без geometry (тяжёлый)
     params = {
-        "fields": "id,thumb_1024_url,geometry,heading,is_pano",
+        "fields": "id,thumb_1024_url",
         "bbox": f"{lon - _meters_to_lon(radius, lat)},{lat - _meters_to_lat(radius)},"
                 f"{lon + _meters_to_lon(radius, lat)},{lat + _meters_to_lat(radius)}",
         "limit": str(limit),
@@ -139,15 +140,8 @@ async def get_mapillary_images(
         if not features:
             features = data.get("features", [])
         for feature in features[:limit]:
-            # Mapillary v4: поля прямо в объекте (не в properties)
-            props = feature.get("properties", {}) or feature
-            geom = feature.get("geometry", {})
-            coords = geom.get("coordinates", []) if isinstance(geom, dict) else []
-            img_url = (
-                feature.get("thumb_1024_url")
-                or props.get("thumb_1024_url")
-                or ""
-            )
+            # Mapillary v4: поля прямо в объекте
+            img_url = feature.get("thumb_1024_url", "")
             if not img_url:
                 logger.warning(f"Mapillary: нет URL у изображения {feature.get('id', '?')}")
                 continue
@@ -156,9 +150,6 @@ async def get_mapillary_images(
             if image_b64:
                 images.append({
                     "base64": image_b64, "url": img_url,
-                    "heading": feature.get("heading") or props.get("heading", 0),
-                    "is_pano": feature.get("is_pano") or props.get("is_pano", False),
-                    "distance_m": round(haversine(lat, lon, coords[1] if len(coords) > 1 else lat, coords[0] if coords else lon), 1),
                     "source": "mapillary",
                 })
             else:
