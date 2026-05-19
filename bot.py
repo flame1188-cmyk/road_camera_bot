@@ -339,6 +339,17 @@ async def _do_road_check(update: Update, context: ContextTypes.DEFAULT_TYPE, tex
         except Exception:
             pass
 
+        # Отправляем скриншот карты
+        if result.get("map_image_bytes"):
+            try:
+                await context.bot.send_photo(
+                    chat_id=chat_id,
+                    photo=result["map_image_bytes"],
+                    caption=f"📍 {lat}, {lon}{chr(10)}{address}" if address else f"📍 {lat}, {lon}",
+                )
+            except Exception:
+                pass
+
         # Отправляем текстовый отчёт
         await update.message.reply_text(result["formatted_message"])
 
@@ -763,6 +774,8 @@ async def _assess_hotspot(update: Update, context: ContextTypes.DEFAULT_TYPE, da
             vlm_model=VLM_MODEL,
             progress_callback=progress,
             accidents=point_cards,
+            directions=[0.0, 90.0, 180.0, 270.0],
+            hotspot_context=f"{road}: {accidents_count} ДТП, {deaths} погибло, {injured} ранено",
         )
 
         # Добавляем статистику очага в начало сообщения
@@ -770,6 +783,7 @@ async def _assess_hotspot(update: Update, context: ContextTypes.DEFAULT_TYPE, da
             f"🔥 ОЧАГ ДТП #{idx + 1}: {road}\n"
             f"📊 ДТП в очаге: {accidents_count} | Погибло: {deaths} | Ранено: {injured}\n"
             f"🧭 Координаты: {lat:.6f}, {lon:.6f}\n"
+            f"📸 Панорамы: 4 направления (0°, 90°, 180°, 270°)\n"
             f"{'─' * 30}\n\n"
         )
         formatted = result.get("formatted_message", "")
@@ -779,6 +793,17 @@ async def _assess_hotspot(update: Update, context: ContextTypes.DEFAULT_TYPE, da
             await status_msg.delete()
         except Exception:
             pass
+
+        # Отправляем скриншот карты
+        if result.get("map_image_bytes"):
+            try:
+                await context.bot.send_photo(
+                    chat_id=chat_id,
+                    photo=result["map_image_bytes"],
+                    caption=f"🔥 Очаг #{idx + 1}: {road}\n📍 {lat:.6f}, {lon:.6f}",
+                )
+            except Exception:
+                pass
 
         # Отправляем текстовый отчёт
         await context.bot.send_message(chat_id=chat_id, text=result["formatted_message"])
