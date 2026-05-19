@@ -37,12 +37,15 @@ VLM_MODEL = os.getenv("VLM_MODEL", "glm-4v-flash")
 # ========================
 
 LLM_API_KEY = os.getenv("LLM_API_KEY", "")
+LLM_API_URL = os.getenv("LLM_API_URL", "https://open.bigmodel.cn/api/paas/v4/chat/completions")
 
 # ========================
-# Mapillary
+# Mapillary (API не работает после поглощения Meta)
 # ========================
 
-MAPILLARY_ACCESS_TOKEN = os.getenv("MAPILLARY_ACCESS_TOKEN", "")
+# ========================
+# Google Maps (требует привязку банковской карты)
+# ========================
 
 # ========================
 # Прокси
@@ -67,7 +70,6 @@ def validate_config() -> None:
         logger.warning("VLM_API_KEY не задан — анализ изображений через VLM недоступен")
     if not LLM_API_KEY:
         logger.warning("LLM_API_KEY не задан — AI-аналитика и вопросы недоступны")
-    if not MAPILLARY_ACCESS_TOKEN:
-        logger.warning("MAPILLARY_ACCESS_TOKEN не задан — уличные фото Mapillary недоступны")
+
     if HTTP_PROXY or HTTPS_PROXY:
         logger.info(f"Прокси: HTTP={HTTP_PROXY or 'нет'}, HTTPS={HTTPS_PROXY or 'нет'}")

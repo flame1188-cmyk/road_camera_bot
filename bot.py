@@ -38,7 +38,6 @@ from config import (
     ALLOWED_USER_IDS,
     ENABLE_NEWS_SEARCH,
     LLM_API_KEY,
-    MAPILLARY_ACCESS_TOKEN,
     TELEGRAM_BOT_TOKEN,
     VLM_API_KEY,
     VLM_API_URL,
@@ -266,7 +265,7 @@ async def cmd_roadhelp(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "  https://yandex.ru/maps/?ll=37.6176%2C55.7558\n"
         "  https://maps.google.com/?q=55.7558,37.6176\n\n"
         "Бот проанализирует:\n"
-        "  - Изображения с Яндекс Карт и Mapillary\n"
+        "  - Яндекс Панорамы и Яндекс Карты\n"
         "  - Данные OpenStreetMap (дорога, освещение, переходы)\n"
         "  - Экспертная оценка через VLM (нейросеть)\n"
         "  - Рекомендации по установке комплекса"
