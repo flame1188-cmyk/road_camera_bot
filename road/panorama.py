@@ -118,7 +118,6 @@ async def get_mapillary_images(
     headers = {
         "User-Agent": "RoadAssessmentBot/1.0",
         "Accept": "application/json",
-        "Authorization": f"Bearer {access_token}",
     }
     params = {
         "fields": "id,thumb_1024_url,computed_geometry,heading,captured_at,is_pano",
@@ -150,6 +149,10 @@ async def get_mapillary_images(
                 "source": "mapillary",
             })
         return images
+    except httpx.HTTPStatusError as e:
+        body = e.response.text[:500]
+        logger.error(f"Mapillary API {e.response.status_code}: {body}")
+        return []
     except Exception as e:
         logger.error(f"Mapillary API: {e}")
         return []
@@ -172,6 +175,9 @@ async def get_satellite_screenshot(lat: float, lon: float, zoom: int = 17) -> by
                 resp.raise_for_status()
                 if len(resp.content) > 5000:
                     return resp.content
+        except httpx.HTTPStatusError as e:
+            body = e.response.text[:500]
+            logger.error(f"Google Maps Static {e.response.status_code}: {body}")
         except Exception as e:
             logger.error(f"Google Maps Static: {e}")
 
@@ -190,6 +196,9 @@ async def get_satellite_screenshot(lat: float, lon: float, zoom: int = 17) -> by
                 content_type = resp.headers.get("content-type", "")
                 if "image" in content_type or len(resp.content) > 5000:
                     return resp.content
+        except httpx.HTTPStatusError as e:
+            body = e.response.text[:500]
+            logger.warning(f"Яндекс спутник {e.response.status_code}: {body}")
         except Exception as e:
             logger.debug(f"Яндекс спутник: {e}")
 
