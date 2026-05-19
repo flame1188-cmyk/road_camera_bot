@@ -106,8 +106,6 @@ async def find_nearby_accidents(
 async def analyze_road_section(
     lat: float, lon: float,
     vlm_api_key: str | None = None,
-    mapillary_api_key: str | None = None,
-    mapillary_access_token: str | None = None,
     vlm_api_url: str = "https://open.bigmodel.cn/api/paas/v4/chat/completions",
     vlm_model: str = "glm-4v-flash",
     progress_callback: Callable[[str], Awaitable[None]] | None = None,
