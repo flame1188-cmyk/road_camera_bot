@@ -104,7 +104,7 @@ async def _download_image_b64(url: str) -> str | None:
 
 
 async def get_mapillary_images(
-    lat: float, lon: float, radius: int = 500, limit: int = 4,
+    lat: float, lon: float, radius: int = 200, limit: int = 3,
 ) -> list[dict[str, Any]]:
     """Получает фотографии с улицы из Mapillary API. Ключ читается из config."""
     cfg = _get_config()
@@ -116,13 +116,13 @@ async def get_mapillary_images(
     headers = {
         "User-Agent": "RoadAssessmentBot/1.0",
         "Accept": "application/json",
+        "Authorization": f"Bearer {access_token}",
     }
     params = {
-        "fields": "id,thumb_1024_url,thumb_2048_url,computed_geometry,heading,captured_at,is_pano",
+        "fields": "id,thumb_1024_url,geometry,heading,is_pano",
         "bbox": f"{lon - _meters_to_lon(radius, lat)},{lat - _meters_to_lat(radius)},"
                 f"{lon + _meters_to_lon(radius, lat)},{lat + _meters_to_lat(radius)}",
         "limit": str(limit),
-        "access_token": access_token,
     }
 
     try:
@@ -139,15 +139,13 @@ async def get_mapillary_images(
         if not features:
             features = data.get("features", [])
         for feature in features[:limit]:
-            # Новое API: поля могут быть прямо в объекте
+            # Mapillary v4: поля прямо в объекте (не в properties)
             props = feature.get("properties", {}) or feature
-            geom = feature.get("geometry", feature.get("computed_geometry", {}))
+            geom = feature.get("geometry", {})
             coords = geom.get("coordinates", []) if isinstance(geom, dict) else []
             img_url = (
-                props.get("thumb_1024_url")
-                or props.get("thumb_2048_url")
-                or feature.get("thumb_1024_url")
-                or feature.get("thumb_2048_url")
+                feature.get("thumb_1024_url")
+                or props.get("thumb_1024_url")
                 or ""
             )
             if not img_url:
@@ -158,7 +156,8 @@ async def get_mapillary_images(
             if image_b64:
                 images.append({
                     "base64": image_b64, "url": img_url,
-                    "heading": props.get("heading", 0), "is_pano": props.get("is_pano", False),
+                    "heading": feature.get("heading") or props.get("heading", 0),
+                    "is_pano": feature.get("is_pano") or props.get("is_pano", False),
                     "distance_m": round(haversine(lat, lon, coords[1] if len(coords) > 1 else lat, coords[0] if coords else lon), 1),
                     "source": "mapillary",
                 })
@@ -177,7 +176,6 @@ async def get_mapillary_images(
 
 async def collect_road_images(
     lat: float, lon: float,
-    mapillary_api_key: str | None = None, mapillary_access_token: str | None = None,
 ) -> dict[str, Any]:
     """Собирает все доступные изображения для точки.
 

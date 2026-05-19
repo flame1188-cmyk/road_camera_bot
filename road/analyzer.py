@@ -134,7 +134,7 @@ async def analyze_road_section(
 
     # Шаг 2: Параллельно: изображения + OSM
     await update_progress(f"Сбор изображений и данных OSM...\nАдрес: {address or 'определяется...'}")
-    images_task = collect_road_images(lat, lon, mapillary_api_key=mapillary_api_key, mapillary_access_token=mapillary_access_token)
+    images_task = collect_road_images(lat, lon)
     osm_task = get_road_data(lat, lon)
     images_result, osm_data = await asyncio.gather(images_task, osm_task, return_exceptions=True)
 
