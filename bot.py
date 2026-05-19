@@ -44,6 +44,7 @@ from config import (
     VLM_API_KEY,
     VLM_API_URL,
     VLM_MODEL,
+    YANDEX_API_KEY,
 )
 from gibdd.api_client import fetch_dtp_data, fetch_regions, extract_accident_cards
 from gibdd.parser import build_file1_data, build_file2_data
@@ -332,6 +333,7 @@ async def _do_road_check(update: Update, context: ContextTypes.DEFAULT_TYPE, tex
             lat=lat, lon=lon,
             vlm_api_key=VLM_API_KEY or None,
             mapillary_access_token=MAPILLARY_ACCESS_TOKEN or None,
+            yandex_api_key=YANDEX_API_KEY or None,
             google_api_key=GOOGLE_MAPS_API_KEY or None,
             vlm_api_url=VLM_API_URL,
             vlm_model=VLM_MODEL,
