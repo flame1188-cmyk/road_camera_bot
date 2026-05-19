@@ -8,7 +8,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gnupg2 \
     unzip \
     libxi6 \
-    libgconf-2-4 \
     libgtk-3-0 \
     libx11-xcb1 \
     libdrm2 \
