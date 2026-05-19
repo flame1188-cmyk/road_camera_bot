@@ -110,12 +110,15 @@ async def analyze_road_section(
     vlm_model: str = "glm-4v-flash",
     progress_callback: Callable[[str], Awaitable[None]] | None = None,
     accidents: list[dict] | None = None,
+    directions: list[float] | None = None,
+    hotspot_context: str = "",
 ) -> dict[str, Any]:
     """Полный анализ участка дороги."""
     result = {
         "coordinates": (lat, lon), "address": "", "osm_data": None,
         "images": None, "vlm_result": None, "formatted_message": "",
         "nearby_accidents": [], "excel_bytes": None, "excel_filename": "", "errors": [],
+        "map_image_bytes": None,
     }
 
     async def update_progress(msg: str):
@@ -132,7 +135,7 @@ async def analyze_road_section(
 
     # Шаг 2: Параллельно: изображения + OSM
     await update_progress(f"Сбор изображений и данных OSM...\nАдрес: {address or 'определяется...'}")
-    images_task = collect_road_images(lat, lon)
+    images_task = collect_road_images(lat, lon, directions=directions)
     osm_task = get_road_data(lat, lon)
     images_result, osm_data = await asyncio.gather(images_task, osm_task, return_exceptions=True)
 
@@ -156,6 +159,7 @@ async def analyze_road_section(
         vlm_result = await analyze_road_images(
             images_b64_list=images_b64_list, osm_summary=osm_summary,
             api_key=vlm_api_key, api_url=vlm_api_url, model=vlm_model,
+            hotspot_context=hotspot_context,
         )
     else:
         osm_summary = format_osm_summary(osm_data) if osm_data else "Нет данных"
@@ -179,6 +183,9 @@ async def analyze_road_section(
     if result["errors"]:
         formatted += "\nОшибки: " + "; ".join(result["errors"])
     result["formatted_message"] = formatted
+
+    # Сохраняем байты карты для отправки пользователю
+    result["map_image_bytes"] = images_result.get("map_image_bytes")
 
     # Шаг 6: Excel
     try:

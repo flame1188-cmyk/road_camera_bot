@@ -4,11 +4,9 @@
 Источники:
   1. Яндекс Static Map (схема) — бесплатно, работает стабильно
   2. Яндекс Панорамы через Playwright (headless Chromium) — основной источник уличных фото
-  3. Mapillary — отключён (API возвращает 0 результатов)
-  4. Google Maps — исключён (требует платного ключа)
 
-Chromium устанавливается через apt-get в Dockerfile (системный пакет).
-Playwright использует системный Chromium по пути /usr/bin/chromium.
+Требования: Chromium установлен в системе (/usr/bin/chromium).
+В Docker-окружении Amvera устанавливается через apt-get в Dockerfile.
 """
 
 from __future__ import annotations
@@ -16,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import logging
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -31,6 +30,8 @@ _USER_AGENT = (
     "AppleWebKit/537.36 (KHTML, like Gecko) "
     "Chrome/120.0.0.0 Safari/537.36"
 )
+
+CHROMIUM_PATH = "/usr/bin/chromium"
 
 
 # ========================
@@ -65,7 +66,7 @@ async def get_yandex_map_screenshot(
 # ========================
 
 async def check_yandex_panorama(lat: float, lon: float) -> dict[str, Any] | None:
-    """Проверяет наличие Яндекс-панорамы в точке (без скриншота)."""
+    """Проверяет наличие Яндекс-панорамы в точке."""
     url = "https://panorama.maps.yandex.net/v1/panorama/2.0/"
     params = {
         "lat": str(lat), "lng": str(lon),
@@ -90,7 +91,7 @@ async def check_yandex_panorama(lat: float, lon: float) -> dict[str, Any] | None
 # ========================
 
 def _build_panorama_url(lat: float, lon: float, direction: float = 0.0) -> str:
-    """Строит URL для открытия Яндекс Панорамы в заданном направлении."""
+    """Строит URL для открытия Яндекс Панорамы."""
     return (
         f"https://yandex.ru/maps/?from=map&ll={lon}%2C{lat}&z=17"
         f"&panorama%5Bpoint%5D={lon}%2C{lat}"
@@ -106,21 +107,21 @@ async def get_yandex_panorama_screenshots(
     width: int = 1280, height: int = 720,
     timeout_ms: int = 30000,
 ) -> list[dict[str, Any]]:
-    """Получает скриншоты Яндекс Панорамы через Playwright (headless Chromium).
-
-    Chromium устанавливается автоматически при первом вызове.
-    Возвращает список dict с ключами: base64, source, heading.
-    """
+    """Получает скриншоты Яндекс Панорамы через Playwright + системный Chromium."""
     if directions is None:
         directions = [0.0]
 
     results: list[dict[str, Any]] = []
 
-    # Импортируем Playwright
+    # Проверяем наличие Chromium
+    if not Path(CHROMIUM_PATH).exists():
+        logger.error(f"Chromium не найден по пути {CHROMIUM_PATH} — панорамы пропущены")
+        return results
+
     try:
         from playwright.async_api import async_playwright
     except ImportError:
-        logger.error("Playwright Python-пакет не установлен")
+        logger.error("Playwright не установлен (pip install playwright)")
         return results
 
     logger.info(f"Яндекс Панорама (Playwright): {lat}, {lon}, направления {directions}")
@@ -131,18 +132,13 @@ async def get_yandex_panorama_screenshots(
         "--disable-dev-shm-usage",
         "--disable-gpu",
         "--disable-software-rasterizer",
-        "--no-zygote",
-        "--single-process",
     ]
-
-    # Путь к системному Chromium (установлен через apt-get в Dockerfile)
-    chromium_path = "/usr/bin/chromium"
 
     try:
         async with async_playwright() as p:
             browser = await p.chromium.launch(
                 headless=True,
-                executable_path=chromium_path,
+                executable_path=CHROMIUM_PATH,
                 args=chromium_args,
             )
             try:
@@ -163,13 +159,12 @@ async def get_yandex_panorama_screenshots(
                         logger.info(f"  направление {direction}°: загрузка...")
                         await page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
 
-                        # Ждём появления canvas (панорама рендерится в canvas)
+                        # Ждём canvas (панорама рендерится в canvas)
                         try:
                             await page.wait_for_selector("canvas", timeout=15000)
                         except Exception:
                             logger.debug(f"  направление {direction}°: canvas не найден")
 
-                        # Пауза для рендеринга тайлов панорамы
                         await asyncio.sleep(3)
 
                         screenshot_bytes = await page.screenshot(type="jpeg", quality=80)
@@ -185,14 +180,14 @@ async def get_yandex_panorama_screenshots(
                         else:
                             logger.warning(
                                 f"  направление {direction}°: "
-                                f"скриншот слишком маленький ({len(screenshot_bytes) if screenshot_bytes else 0} байт)"
+                                f"скриншот маленький ({len(screenshot_bytes) if screenshot_bytes else 0} байт)"
                             )
                     except Exception as e:
-                        logger.error(f"  направление {direction}°: ошибка — {e}")
+                        logger.error(f"  направление {direction}°: {e}")
             finally:
                 await browser.close()
     except Exception as e:
-        logger.error(f"Яндекс Панорама (Playwright): ошибка браузера — {e}")
+        logger.error(f"Ошибка браузера: {e}")
 
     return results
 
@@ -203,37 +198,37 @@ async def get_yandex_panorama_screenshots(
 
 async def collect_road_images(
     lat: float, lon: float,
+    directions: list[float] | None = None,
 ) -> dict[str, Any]:
-    """Собирает все доступные изображения для точки.
+    """Собирает все доступные изображения для точки."""
+    if directions is None:
+        directions = [0.0, 180.0]
 
-    Цепочка источников:
-    1. Яндекс Static Map (схема) — всегда
-    2. Яндекс Панорама через Playwright (уличные фото) — основной
-    3. Mapillary — отключён (API мёртв)
-    """
     result = {
         "map_image_b64": None,
+        "map_image_bytes": None,
         "street_images": [],
         "panorama_available": False,
         "sources_used": [],
     }
 
-    # 1. Схематичная карта Яндекс (бесплатно, без ключа)
+    # 1. Яндекс Static Map (схема)
     map_img = await get_yandex_map_screenshot(lat, lon)
     if map_img:
+        result["map_image_bytes"] = map_img
         result["map_image_b64"] = base64.b64encode(map_img).decode("utf-8")
         result["sources_used"].append("yandex_map")
 
-    # 2. Яндекс Панорама через Playwright — основной источник уличных фото
+    # 2. Яндекс Панорама через Playwright
     panorama_shots = await get_yandex_panorama_screenshots(
-        lat, lon, directions=[0.0, 180.0],
+        lat, lon, directions=directions,
     )
     if panorama_shots:
         result["street_images"].extend(panorama_shots)
         result["panorama_available"] = True
         result["sources_used"].append(f"yandex_panorama({len(panorama_shots)} фото)")
 
-    # 3. Проверка наличия панорамы (для информации)
+    # 3. Проверка наличия панорамы (API)
     if not result["panorama_available"]:
         pano_check = await check_yandex_panorama(lat, lon)
         if pano_check:
