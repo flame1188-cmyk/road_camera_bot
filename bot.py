@@ -473,6 +473,15 @@ async def on_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             await _run_concentration_points(update, context)
             return
 
+        if data.startswith("ap:"):
+            await _assess_hotspot(update, context, data)
+            return
+
+        if data == "end_conc":
+            context.user_data.pop("conc_points", None)
+            await query.edit_message_text("Оценка очагов завершена.\n/dtp — новая выгрузка")
+            return
+
         if data == "end_qa":
             _clear_analytics_data(context.user_data)
             await query.edit_message_text("Режим вопросов завершён.\n/dtp — новая выгрузка")
@@ -698,11 +707,107 @@ async def _run_analysis(update: Update, context: ContextTypes.DEFAULT_TYPE, use_
         _clear_analytics_data(context.user_data)
 
 
+async def _assess_hotspot(update: Update, context: ContextTypes.DEFAULT_TYPE, data: str) -> None:
+    """Оценка очага ДТП — полная проверка участка дороги для установки камеры."""
+    query = update.callback_query
+    chat_id = query.message.chat_id
+
+    # Получаем индекс очага
+    try:
+        idx = int(data.split(":")[1])
+    except (ValueError, IndexError):
+        await query.edit_message_text("Ошибка: неверный индекс очага.")
+        return
+
+    points = context.user_data.get("conc_points", [])
+    if not points or idx >= len(points):
+        await query.edit_message_text("Данные очагов не найдены. Выполните выгрузку заново.")
+        return
+
+    pt = points[idx]
+    center = pt.get("center", (0, 0))
+    lat, lon = center[0], center[1]
+
+    if lat == 0 and lon == 0:
+        await query.answer("У очага нет координат", show_alert=True)
+        return
+
+    road = pt.get("road", "")
+    accidents_count = pt.get("total_accidents", 0)
+    deaths = pt.get("deaths", 0)
+    injured = pt.get("injured", 0)
+    point_cards = pt.get("cards", [])
+
+    # Обновляем сообщение с прогрессом
+    await query.edit_message_text(
+        f"🔍 Оценка очага #{idx + 1}\n"
+        f"📍 {road}\n"
+        f"📊 {accidents_count} ДТП | {deaths} погиб. | {injured} ран.\n"
+        f"🧭 {lat:.6f}, {lon:.6f}\n\n"
+        f"Сбор данных..."
+    )
+
+    status_msg = query.message
+
+    async def progress(msg: str):
+        try:
+            await status_msg.edit_text(msg)
+        except Exception:
+            pass
+
+    try:
+        result = await analyze_road_section(
+            lat=lat, lon=lon,
+            vlm_api_key=VLM_API_KEY or None,
+            vlm_api_url=VLM_API_URL,
+            vlm_model=VLM_MODEL,
+            progress_callback=progress,
+            accidents=point_cards,
+        )
+
+        # Добавляем статистику очага в начало сообщения
+        hotspot_header = (
+            f"🔥 ОЧАГ ДТП #{idx + 1}: {road}\n"
+            f"📊 ДТП в очаге: {accidents_count} | Погибло: {deaths} | Ранено: {injured}\n"
+            f"🧭 Координаты: {lat:.6f}, {lon:.6f}\n"
+            f"{'─' * 30}\n\n"
+        )
+        formatted = result.get("formatted_message", "")
+        result["formatted_message"] = hotspot_header + formatted
+
+        try:
+            await status_msg.delete()
+        except Exception:
+            pass
+
+        # Отправляем текстовый отчёт
+        await context.bot.send_message(chat_id=chat_id, text=result["formatted_message"])
+
+        # Отправляем Excel
+        if result.get("excel_bytes"):
+            await context.bot.send_document(
+                chat_id=chat_id,
+                document=result["excel_bytes"],
+                filename=result.get("excel_filename", "road_assessment.xlsx"),
+                caption=f"Очаг #{idx + 1}: {road} | {accidents_count} ДТП",
+            )
+
+        logger.info(f"Оценка очага #{idx + 1} завершена: {lat}, {lon}")
+
+    except Exception as e:
+        logger.exception(f"Ошибка оценки очага: {e}")
+        try:
+            await status_msg.edit_text(f"Ошибка оценки очага: {e}")
+        except Exception:
+            pass
+
+
 def _clear_analytics_data(user_data: dict) -> None:
     for key in [
         "analytics_ready", "analytics_reg_code", "analytics_reg_name",
         "analytics_period", "analytics_cards", "analytics_comparison",
         "analytics_current_label", "analytics_prev_label", "qa_mode",
+        "conc_points",
     ]:
         user_data.pop(key, None)
 
@@ -747,6 +852,12 @@ async def _run_concentration_points(update: Update, context: ContextTypes.DEFAUL
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         safe_reg = reg_name.replace(" ", "_")[:30]
 
+        # Сортируем по количеству ДТП (убывание)
+        sorted_points = sorted(points, key=lambda p: p.get("total_accidents", 0), reverse=True)
+
+        # Сохраняем для оценки
+        context.user_data["conc_points"] = sorted_points
+
         await context.bot.send_message(
             chat_id=chat_id,
             text=f"🔥 <b>Очаги ДТП: {reg_name}</b>\n{period.label}\n\nНайдено: {len(points)} очагов",
@@ -757,6 +868,29 @@ async def _run_concentration_points(update: Update, context: ContextTypes.DEFAUL
             filename=f"dtp_conc_{safe_reg}_{period.year}_{timestamp}.xlsx",
             caption=f"Очаги ДТП (сводка + детализация, 2 листа)\n{len(points)} очагов",
         )
+
+        # Кнопки оценки очагов (топ-10)
+        top = sorted_points[:10]
+        if top:
+            buttons = []
+            for i, pt in enumerate(top):
+                center = pt.get("center", (0, 0))
+                road = pt.get("road", "")
+                accidents = pt.get("total_accidents", 0)
+                deaths = pt.get("deaths", 0)
+                label = f"#{i+1} {road}"
+                if len(label) > 38:
+                    label = label[:36] + ".."
+                label += f" | {accidents} ДТП"
+                if deaths > 0:
+                    label += f" ({deaths} погиб.)"
+                buttons.append([InlineKeyboardButton(f"🔍 {label}", callback_data=f"ap:{i}")])
+            buttons.append([InlineKeyboardButton("❌ Завершить", callback_data="end_conc")])
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text="Выберите очаг для оценки установки камеры:\n(топ-10 по количеству ДТП)",
+                reply_markup=InlineKeyboardMarkup(buttons),
+            )
 
         logger.info(f"Очаги отправлены: {len(points)}")
 

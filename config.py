@@ -40,14 +40,6 @@ LLM_API_KEY = os.getenv("LLM_API_KEY", "")
 LLM_API_URL = os.getenv("LLM_API_URL", "https://open.bigmodel.cn/api/paas/v4/chat/completions")
 
 # ========================
-# Mapillary (API не работает после поглощения Meta)
-# ========================
-
-# ========================
-# Google Maps (требует привязку банковской карты)
-# ========================
-
-# ========================
 # Прокси
 # ========================
 
