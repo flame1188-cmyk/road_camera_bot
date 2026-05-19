@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from typing import Any
@@ -86,18 +87,28 @@ async def analyze_road_images(
     }
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
 
-    try:
-        async with httpx.AsyncClient(verify=False, timeout=120) as client:
-            resp = await client.post(api_url, json=payload, headers=headers)
-            resp.raise_for_status()
-            data = resp.json()
-        choices = data.get("choices", [])
-        if not choices:
-            return {"error": "Пустой ответ от VLM"}
-        text = choices[0].get("message", {}).get("content", "")
-        return _parse_vlm_response(text)
-    except Exception as e:
-        return {"error": f"Ошибка VLM: {e}"}
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            async with httpx.AsyncClient(verify=False, timeout=120) as client:
+                resp = await client.post(api_url, json=payload, headers=headers)
+                if resp.status_code == 429:
+                    wait = 10 * (attempt + 1)
+                    logger.warning(f"VLM 429, повтор через {wait}с (попытка {attempt + 1}/{max_retries})")
+                    await asyncio.sleep(wait)
+                    continue
+                resp.raise_for_status()
+                data = resp.json()
+            choices = data.get("choices", [])
+            if not choices:
+                return {"error": "Пустой ответ от VLM"}
+            text = choices[0].get("message", {}).get("content", "")
+            return _parse_vlm_response(text)
+        except httpx.HTTPStatusError as e:
+            return {"error": f"Ошибка VLM: {e}"}
+        except Exception as e:
+            return {"error": f"Ошибка VLM: {e}"}
+    return {"error": f"Ошибка VLM: превышен лимит запросов (429) после {max_retries} попыток"}
 
 
 def _parse_vlm_response(text: str) -> dict[str, Any]:
