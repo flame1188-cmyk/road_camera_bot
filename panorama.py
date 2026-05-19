@@ -1,7 +1,8 @@
 """
 Модуль получения изображений участка дороги.
 
-Источники: Яндекс Static Map, Mapillary, Яндекс Панорамы.
+Источники: Яндекс Static Map, Google Maps, Mapillary, Яндекс Панорамы.
+API-ключи читаются напрямую из config.py — не нужно передавать через параметры.
 """
 
 from __future__ import annotations
@@ -17,9 +18,23 @@ logger = logging.getLogger(__name__)
 
 YANDEX_STATIC_MAP_URL = "https://static-maps.yandex.ru/1.x/"
 MAPILLARY_SEARCH_URL = "https://graph.mapillary.com/images/search"
+GOOGLE_MAPS_STATIC_URL = "https://maps.googleapis.com/maps/api/staticmap"
 
 MAP_IMAGE_WIDTH = 600
 MAP_IMAGE_HEIGHT = 450
+
+
+def _get_config():
+    """Ленивый импорт config — читает ключи напрямую."""
+    try:
+        from config import YANDEX_API_KEY, GOOGLE_MAPS_API_KEY, MAPILLARY_ACCESS_TOKEN
+        return {
+            "yandex_api_key": YANDEX_API_KEY or None,
+            "google_api_key": GOOGLE_MAPS_API_KEY or None,
+            "mapillary_token": MAPILLARY_ACCESS_TOKEN or None,
+        }
+    except ImportError:
+        return {"yandex_api_key": None, "google_api_key": None, "mapillary_token": None}
 
 
 async def get_yandex_map_screenshot(
@@ -93,23 +108,25 @@ async def _download_image_b64(url: str) -> str | None:
 
 async def get_mapillary_images(
     lat: float, lon: float, radius: int = 150, limit: int = 4,
-    api_key: str | None = None, access_token: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Получает фотографии с улицы из Mapillary API."""
-    if not api_key and not access_token:
+    """Получает фотографии с улицы из Mapillary API. Ключ читается из config."""
+    cfg = _get_config()
+    access_token = cfg["mapillary_token"]
+    if not access_token:
         return []
-    headers = {"User-Agent": "RoadAssessmentBot/1.0", "Accept": "application/json"}
-    if access_token:
-        headers["Authorization"] = f"Bearer {access_token}"
-        params = {
-            "fields": "id,thumb_1024_url,computed_geometry,heading,captured_at,is_pano",
-            "bbox": f"{lon - _meters_to_lon(radius, lat)},{lat - _meters_to_lat(radius)},"
-                    f"{lon + _meters_to_lon(radius, lat)},{lat + _meters_to_lat(radius)}",
-            "limit": str(limit), "is_pano": "true",
-            "access_token": access_token,
-        }
-    else:
-        params = {"client_id": api_key, "lookat": f"{lat},{lon}", "radius": str(radius), "limit": str(limit)}
+
+    headers = {
+        "User-Agent": "RoadAssessmentBot/1.0",
+        "Accept": "application/json",
+        "Authorization": f"Bearer {access_token}",
+    }
+    params = {
+        "fields": "id,thumb_1024_url,computed_geometry,heading,captured_at,is_pano",
+        "bbox": f"{lon - _meters_to_lon(radius, lat)},{lat - _meters_to_lat(radius)},"
+                f"{lon + _meters_to_lon(radius, lat)},{lat + _meters_to_lat(radius)}",
+        "limit": str(limit), "is_pano": "true",
+        "access_token": access_token,
+    }
 
     try:
         async with httpx.AsyncClient(verify=False, timeout=30) as client:
@@ -117,9 +134,9 @@ async def get_mapillary_images(
             resp.raise_for_status()
             data = resp.json()
         images = []
-        features = data.get("features", [])
-        if not features and "data" in data:
-            features = data["data"]
+        features = data.get("data", [])
+        if not features:
+            features = data.get("features", [])
         for feature in features[:limit]:
             props = feature.get("properties", {}) or feature
             geom = feature.get("geometry", {})
@@ -138,90 +155,82 @@ async def get_mapillary_images(
         return []
 
 
-GOOGLE_MAPS_STATIC_URL = "https://maps.googleapis.com/maps/api/staticmap"
+async def get_satellite_screenshot(lat: float, lon: float, zoom: int = 17) -> bytes | None:
+    """Получает спутниковый снимок. Google (если есть ключ) → Яндекс (если есть ключ)."""
+    cfg = _get_config()
 
+    # Google Maps Static API
+    if cfg["google_api_key"]:
+        params = {
+            "center": f"{lat},{lon}", "zoom": str(zoom),
+            "size": f"{MAP_IMAGE_WIDTH}x{MAP_IMAGE_HEIGHT}", "maptype": "satellite",
+            "scale": "2", "key": cfg["google_api_key"],
+        }
+        try:
+            async with httpx.AsyncClient(verify=False, timeout=30) as client:
+                resp = await client.get(GOOGLE_MAPS_STATIC_URL, params=params)
+                resp.raise_for_status()
+                if len(resp.content) > 5000:
+                    return resp.content
+        except Exception as e:
+            logger.error(f"Google Maps Static: {e}")
 
-async def get_google_satellite(lat: float, lon: float, zoom: int = 17,
-                               width: int = MAP_IMAGE_WIDTH, height: int = MAP_IMAGE_HEIGHT,
-                               api_key: str | None = None) -> bytes | None:
-    """Получает спутниковый снимок через Google Maps Static API."""
-    if not api_key:
-        return None
-    params = {
-        "center": f"{lat},{lon}", "zoom": str(zoom),
-        "size": f"{width}x{height}", "maptype": "satellite",
-        "scale": "2", "key": api_key,
-    }
-    try:
-        async with httpx.AsyncClient(verify=False, timeout=30) as client:
-            resp = await client.get(GOOGLE_MAPS_STATIC_URL, params=params)
-            resp.raise_for_status()
-            if len(resp.content) > 5000:
-                return resp.content
-    except Exception as e:
-        logger.error(f"Google Maps Static: {e}")
+    # Яндекс Static API (с API-ключом)
+    if cfg["yandex_api_key"]:
+        params = {
+            "ll": f"{lon},{lat}", "z": str(zoom),
+            "size": f"{MAP_IMAGE_WIDTH},{MAP_IMAGE_HEIGHT}", "l": "sat",
+            "pt": f"{lon},{lat},pm2rdm", "scale": "2",
+            "apikey": cfg["yandex_api_key"],
+        }
+        try:
+            async with httpx.AsyncClient(verify=False, timeout=30) as client:
+                resp = await client.get(YANDEX_STATIC_MAP_URL, params=params)
+                resp.raise_for_status()
+                content_type = resp.headers.get("content-type", "")
+                if "image" in content_type or len(resp.content) > 5000:
+                    return resp.content
+        except Exception as e:
+            logger.debug(f"Яндекс спутник: {e}")
+
     return None
-
-
-async def get_yandex_satellite(lat: float, lon: float, zoom: int = 17,
-                               api_key: str | None = None) -> bytes | None:
-    """Получает спутниковый снимок через Яндекс Static API."""
-    params = {
-        "ll": f"{lon},{lat}", "z": str(zoom),
-        "size": f"{MAP_IMAGE_WIDTH},{MAP_IMAGE_HEIGHT}", "l": "sat",
-        "pt": f"{lon},{lat},pm2rdm", "scale": "2",
-    }
-    if api_key:
-        params["apikey"] = api_key
-    try:
-        async with httpx.AsyncClient(verify=False, timeout=30) as client:
-            resp = await client.get(YANDEX_STATIC_MAP_URL, params=params)
-            resp.raise_for_status()
-            content_type = resp.headers.get("content-type", "")
-            if "image" in content_type or len(resp.content) > 5000:
-                return resp.content
-    except Exception as e:
-        logger.debug(f"Яндекс спутник: {e}")
-    return None
-
-
-async def get_satellite_screenshot(lat: float, lon: float, zoom: int = 17,
-                                  yandex_api_key: str | None = None,
-                                  google_api_key: str | None = None) -> bytes | None:
-    """Получает спутниковый снимок. Google → Яндекс (fallback)."""
-    if google_api_key:
-        img = await get_google_satellite(lat, lon, zoom=zoom, api_key=google_api_key)
-        if img:
-            return img
-    return await get_yandex_satellite(lat, lon, zoom=zoom, api_key=yandex_api_key)
 
 
 async def collect_road_images(
     lat: float, lon: float,
     mapillary_api_key: str | None = None, mapillary_access_token: str | None = None,
-    yandex_api_key: str | None = None, google_api_key: str | None = None,
 ) -> dict[str, Any]:
-    """Собирает все доступные изображения для точки."""
+    """Собирает все доступные изображения для точки.
+
+    API-ключи (Яндекс, Google, Mapillary) читаются из config.py напрямую.
+    Параметры mapillary_api_key/mapillary_access_token оставлены для обратной совместимости,
+    но игнорируются — ключ берётся из конфига.
+    """
     result = {
         "map_image_b64": None, "satellite_image_b64": None,
         "street_images": [], "panorama_available": False, "sources_used": [],
     }
+
+    # Схематичная карта (бесплатно, без ключа)
     map_img = await get_yandex_map_screenshot(lat, lon)
     if map_img:
         result["map_image_b64"] = base64.b64encode(map_img).decode("utf-8")
         result["sources_used"].append("yandex_map")
 
-    sat_img = await get_satellite_screenshot(lat, lon, yandex_api_key=yandex_api_key, google_api_key=google_api_key)
+    # Спутник (Google → Яндекс, ключи из config)
+    sat_img = await get_satellite_screenshot(lat, lon)
     if sat_img:
         result["satellite_image_b64"] = base64.b64encode(sat_img).decode("utf-8")
-        result["sources_used"].append("yandex_satellite")
+        if result["sources_used"] and "satellite" not in result["sources_used"][-1]:
+            result["sources_used"].append("satellite")
 
-    if mapillary_api_key or mapillary_access_token:
-        mly = await get_mapillary_images(lat, lon, api_key=mapillary_api_key, access_token=mapillary_access_token)
-        if mly:
-            result["street_images"].extend(mly)
-            result["sources_used"].append(f"mapillary({len(mly)})")
+    # Уличные фото Mapillary (ключ из config)
+    mly = await get_mapillary_images(lat, lon)
+    if mly:
+        result["street_images"].extend(mly)
+        result["sources_used"].append(f"mapillary({len(mly)})")
 
+    # Проверка панорамы Яндекс
     panorama = await check_yandex_panorama(lat, lon)
     if panorama:
         result["panorama_available"] = True

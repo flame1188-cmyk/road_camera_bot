@@ -108,8 +108,6 @@ async def analyze_road_section(
     vlm_api_key: str | None = None,
     mapillary_api_key: str | None = None,
     mapillary_access_token: str | None = None,
-    yandex_api_key: str | None = None,
-    google_api_key: str | None = None,
     vlm_api_url: str = "https://open.bigmodel.cn/api/paas/v4/chat/completions",
     vlm_model: str = "glm-4v-flash",
     progress_callback: Callable[[str], Awaitable[None]] | None = None,
@@ -136,13 +134,7 @@ async def analyze_road_section(
 
     # Шаг 2: Параллельно: изображения + OSM
     await update_progress(f"Сбор изображений и данных OSM...\nАдрес: {address or 'определяется...'}")
-    images_task = collect_road_images(
-        lat, lon,
-        mapillary_api_key=mapillary_api_key,
-        mapillary_access_token=mapillary_access_token,
-        yandex_api_key=yandex_api_key,
-        google_api_key=google_api_key,
-    )
+    images_task = collect_road_images(lat, lon, mapillary_api_key=mapillary_api_key, mapillary_access_token=mapillary_access_token)
     osm_task = get_road_data(lat, lon)
     images_result, osm_data = await asyncio.gather(images_task, osm_task, return_exceptions=True)
 
