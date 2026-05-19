@@ -15,9 +15,10 @@ from typing import Any
 import httpx
 
 logger = logging.getLogger(__name__)
+logger.info("panorama.py загружен (v2 — ключи из config.py напрямую)")
 
 YANDEX_STATIC_MAP_URL = "https://static-maps.yandex.ru/1.x/"
-MAPILLARY_SEARCH_URL = "https://graph.mapillary.com/images/search"
+MAPILLARY_SEARCH_URL = "https://graph.mapillary.com/images"
 GOOGLE_MAPS_STATIC_URL = "https://maps.googleapis.com/maps/api/staticmap"
 
 MAP_IMAGE_WIDTH = 600
@@ -181,26 +182,9 @@ async def get_satellite_screenshot(lat: float, lon: float, zoom: int = 17) -> by
         except Exception as e:
             logger.error(f"Google Maps Static: {e}")
 
-    # Яндекс Static API (с API-ключом)
-    if cfg["yandex_api_key"]:
-        params = {
-            "ll": f"{lon},{lat}", "z": str(zoom),
-            "size": f"{MAP_IMAGE_WIDTH},{MAP_IMAGE_HEIGHT}", "l": "sat",
-            "pt": f"{lon},{lat},pm2rdm", "scale": "2",
-            "apikey": cfg["yandex_api_key"],
-        }
-        try:
-            async with httpx.AsyncClient(verify=False, timeout=30) as client:
-                resp = await client.get(YANDEX_STATIC_MAP_URL, params=params)
-                resp.raise_for_status()
-                content_type = resp.headers.get("content-type", "")
-                if "image" in content_type or len(resp.content) > 5000:
-                    return resp.content
-        except httpx.HTTPStatusError as e:
-            body = e.response.text[:500]
-            logger.warning(f"Яндекс спутник {e.response.status_code}: {body}")
-        except Exception as e:
-            logger.debug(f"Яндекс спутник: {e}")
+    # Яндекс спутник: в бесплатном Static API слой 'sat' НЕ поддерживается.
+    # Пропускаем Яндекс-спутник — используем только Google Maps.
+    logger.debug("Яндекс спутник: слой 'sat' недоступен в бесплатном Static API")
 
     return None
 
