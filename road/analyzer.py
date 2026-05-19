@@ -37,7 +37,7 @@ def parse_coordinates(text: str) -> tuple[float, float] | None:
             return (lon, lat)
         return (lat, lon)
 
-    # Google Maps URL
+    # Ссылка Google Maps
     g = re.search(r'google.*[?&]q=([-\d.]+),([-\d.]+)', text, re.IGNORECASE)
     if g:
         return (float(g.group(1)), float(g.group(2)))
