@@ -157,6 +157,8 @@ async def analyze_road_section(
     map_b64 = images_result.get("map_image_b64")
     if map_b64:
         images_b64_list.append(map_b64)
+    # Народная карта — НЕ отправляем в VLM (только для контроля пользователю)
+    # Скоростной режим берём из OSM (тег maxspeed)
     # Панорамы
     for img in images_result.get("street_images", []):
         if img.get("base64"):
@@ -192,8 +194,9 @@ async def analyze_road_section(
         formatted += "\nОшибки: " + "; ".join(result["errors"])
     result["formatted_message"] = formatted
 
-    # Сохраняем байты карты и панорам для отправки пользователю
+    # Сохраняем байты карты, Народной карты и панорам для отправки пользователю
     result["map_image_bytes"] = images_result.get("map_image_bytes")
+    result["narodnaya_map_bytes"] = images_result.get("narodnaya_map", {}).get("bytes")
     result["panorama_images"] = [
         {"bytes": img["bytes"], "heading": img.get("heading", 0)}
         for img in images_result.get("street_images", [])
@@ -205,6 +208,7 @@ async def analyze_road_section(
         result["excel_bytes"] = generate_excel_report(
             lat, lon, address, vlm_result, osm_data,
             result["nearby_accidents"], result.get("panorama_images"),
+            result.get("narodnaya_map_bytes"),
         )
         result["excel_filename"] = get_report_filename(lat, lon)
     except Exception as e:
