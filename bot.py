@@ -356,6 +356,29 @@ async def _do_road_check(update: Update, context: ContextTypes.DEFAULT_TYPE, tex
             except Exception:
                 pass
 
+        # Отправляем панорамы (для контроля)
+        panorama_images = result.get("panorama_images", [])
+        if panorama_images:
+            try:
+                import io
+                from telegram import InputMediaPhoto
+                media = []
+                for pano in panorama_images:
+                    heading = pano.get("heading", 0)
+                    media.append(InputMediaPhoto(
+                        media=io.BytesIO(pano["bytes"]),
+                        caption=f"Панорама {int(heading)}°",
+                    ))
+                # Отправляем группу (альбом), по 2 фото в сообщении
+                for i in range(0, len(media), 2):
+                    chunk = media[i:i + 2]
+                    await context.bot.send_media_group(
+                        chat_id=chat_id,
+                        media=chunk,
+                    )
+            except Exception as e:
+                logger.debug(f"Панорамы не отправлены: {e}")
+
         # Отправляем текстовый отчёт
         await update.message.reply_text(result["formatted_message"])
 
@@ -810,6 +833,25 @@ async def _assess_hotspot(update: Update, context: ContextTypes.DEFAULT_TYPE, da
                 )
             except Exception:
                 pass
+
+        # Отправляем панорамы (для контроля)
+        panorama_images = result.get("panorama_images", [])
+        if panorama_images:
+            try:
+                import io
+                from telegram import InputMediaPhoto
+                media = []
+                for pano in panorama_images:
+                    heading = pano.get("heading", 0)
+                    media.append(InputMediaPhoto(
+                        media=io.BytesIO(pano["bytes"]),
+                        caption=f"Панорама {int(heading)}°",
+                    ))
+                for i in range(0, len(media), 2):
+                    chunk = media[i:i + 2]
+                    await context.bot.send_media_group(chat_id=chat_id, media=chunk)
+            except Exception as e:
+                logger.debug(f"Панорамы не отправлены: {e}")
 
         # Отправляем текстовый отчёт
         await context.bot.send_message(chat_id=chat_id, text=result["formatted_message"])
