@@ -173,6 +173,7 @@ async def get_yandex_panorama_screenshots(
                             b64 = base64.b64encode(screenshot_bytes).decode("utf-8")
                             results.append({
                                 "base64": b64,
+                                "bytes": screenshot_bytes,
                                 "source": "yandex_panorama",
                                 "heading": direction,
                             })

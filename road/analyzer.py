@@ -152,7 +152,15 @@ async def analyze_road_section(
         result["osm_data"] = osm_data
 
     # Шаг 3: VLM
-    images_b64_list = [img["base64"] for img in (images_result.get("street_images", [])) if img.get("base64")]
+    images_b64_list = []
+    # Карта сверху — первое изображение для VLM (дополнительный контекст)
+    map_b64 = images_result.get("map_image_b64")
+    if map_b64:
+        images_b64_list.append(map_b64)
+    # Панорамы
+    for img in images_result.get("street_images", []):
+        if img.get("base64"):
+            images_b64_list.append(img["base64"])
     if vlm_api_key and images_b64_list:
         osm_summary = format_osm_summary(osm_data) if osm_data else "Нет данных"
         await update_progress(f"Анализ через нейросеть...\nИзображений: {len(images_b64_list)}")
@@ -184,12 +192,20 @@ async def analyze_road_section(
         formatted += "\nОшибки: " + "; ".join(result["errors"])
     result["formatted_message"] = formatted
 
-    # Сохраняем байты карты для отправки пользователю
+    # Сохраняем байты карты и панорам для отправки пользователю
     result["map_image_bytes"] = images_result.get("map_image_bytes")
+    result["panorama_images"] = [
+        {"bytes": img["bytes"], "heading": img.get("heading", 0)}
+        for img in images_result.get("street_images", [])
+        if img.get("bytes")
+    ]
 
     # Шаг 6: Excel
     try:
-        result["excel_bytes"] = generate_excel_report(lat, lon, address, vlm_result, osm_data, result["nearby_accidents"])
+        result["excel_bytes"] = generate_excel_report(
+            lat, lon, address, vlm_result, osm_data,
+            result["nearby_accidents"], result.get("panorama_images"),
+        )
         result["excel_filename"] = get_report_filename(lat, lon)
     except Exception as e:
         result["errors"].append(f"Excel: {e}")
