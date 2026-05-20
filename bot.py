@@ -23,7 +23,7 @@ def _patched(self, *a, **kw):
 
 httpx.AsyncClient.__init__ = _patched
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputFile
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputFile, InputMediaPhoto
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
@@ -343,28 +343,17 @@ async def _do_road_check(update: Update, context: ContextTypes.DEFAULT_TYPE, tex
         except Exception:
             pass
 
-        # Отправляем скриншот карты
+        # Отправляем скриншот карты (схема + точка)
         if result.get("map_image_bytes"):
             try:
                 caption = f"📍 {lat}, {lon}"
                 if address:
-                    caption += f"\n{address}"
+                    caption += "\n" + address
+                caption += f"\n\n🗺 Яндекс Карты: https://yandex.ru/maps/?ll={lon}%2C{lat}&z=17&pt={lon}%2C{lat}"
                 await context.bot.send_photo(
                     chat_id=chat_id,
                     photo=result["map_image_bytes"],
                     caption=caption,
-                )
-            except Exception:
-                pass
-
-        # Отправляем Народную карту (скоростные режимы)
-        narodnaya_bytes = result.get("narodnaya_map_bytes")
-        if narodnaya_bytes:
-            try:
-                await context.bot.send_photo(
-                    chat_id=chat_id,
-                    photo=narodnaya_bytes,
-                    caption=f"🗺 Народная карта\n📍 {lat}, {lon}",
                 )
             except Exception:
                 pass
@@ -374,7 +363,6 @@ async def _do_road_check(update: Update, context: ContextTypes.DEFAULT_TYPE, tex
         if panorama_images:
             try:
                 import io
-                from telegram import InputMediaPhoto
                 media = []
                 for pano in panorama_images:
                     heading = pano.get("heading", 0)
@@ -382,13 +370,9 @@ async def _do_road_check(update: Update, context: ContextTypes.DEFAULT_TYPE, tex
                         media=io.BytesIO(pano["bytes"]),
                         caption=f"Панорама {int(heading)}°",
                     ))
-                # Отправляем группу (альбом), по 2 фото в сообщении
                 for i in range(0, len(media), 2):
                     chunk = media[i:i + 2]
-                    await context.bot.send_media_group(
-                        chat_id=chat_id,
-                        media=chunk,
-                    )
+                    await context.bot.send_media_group(chat_id=chat_id, media=chunk)
             except Exception as e:
                 logger.debug(f"Панорамы не отправлены: {e}")
 
@@ -404,12 +388,11 @@ async def _do_road_check(update: Update, context: ContextTypes.DEFAULT_TYPE, tex
                     document=InputFile(result["excel_bytes"], filename=excel_filename),
                     caption=f"📊 Отчёт: {lat}, {lon}",
                 )
-                logger.info(f"Excel отправлен: {excel_filename} ({len(result['excel_bytes'])} байт)")
+                logger.info(f"Excel отправлен: {excel_filename}")
             except Exception as e:
-                logger.exception(f"Excel не отправлен (send_document): {e}")
+                logger.exception(f"Excel не отправлен: {e}")
         else:
-            reason = "файл пустой (0 байт)" if result.get("excel_bytes") is not None else "excel_bytes = None"
-            logger.warning(f"Excel НЕ отправлен: {reason} (ошибки: {result.get('errors', [])})")
+            logger.warning(f"Excel НЕ отправлен: {result.get('errors', [])}")
 
         logger.info(f"Анализ дороги завершён: {lat}, {lon}")
 
@@ -853,25 +836,6 @@ async def _assess_hotspot(update: Update, context: ContextTypes.DEFAULT_TYPE, da
                 )
             except Exception:
                 pass
-
-        # Отправляем панорамы (для контроля)
-        panorama_images = result.get("panorama_images", [])
-        if panorama_images:
-            try:
-                import io
-                from telegram import InputMediaPhoto
-                media = []
-                for pano in panorama_images:
-                    heading = pano.get("heading", 0)
-                    media.append(InputMediaPhoto(
-                        media=io.BytesIO(pano["bytes"]),
-                        caption=f"Панорама {int(heading)}°",
-                    ))
-                for i in range(0, len(media), 2):
-                    chunk = media[i:i + 2]
-                    await context.bot.send_media_group(chat_id=chat_id, media=chunk)
-            except Exception as e:
-                logger.debug(f"Панорамы не отправлены: {e}")
 
         # Отправляем текстовый отчёт
         await context.bot.send_message(chat_id=chat_id, text=result["formatted_message"])
