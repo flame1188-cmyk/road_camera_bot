@@ -23,7 +23,7 @@ def _patched(self, *a, **kw):
 
 httpx.AsyncClient.__init__ = _patched
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputFile
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
@@ -397,12 +397,19 @@ async def _do_road_check(update: Update, context: ContextTypes.DEFAULT_TYPE, tex
 
         # Отправляем Excel
         if result.get("excel_bytes"):
-            await context.bot.send_document(
-                chat_id=chat_id,
-                document=result["excel_bytes"],
-                filename=result.get("excel_filename", "road_assessment.xlsx"),
-                caption=f"Отчёт: {lat}, {lon}",
-            )
+            try:
+                excel_filename = result.get("excel_filename", "road_assessment.xlsx")
+                await context.bot.send_document(
+                    chat_id=chat_id,
+                    document=InputFile(result["excel_bytes"], filename=excel_filename),
+                    caption=f"📊 Отчёт: {lat}, {lon}",
+                )
+                logger.info(f"Excel отправлен: {excel_filename} ({len(result['excel_bytes'])} байт)")
+            except Exception as e:
+                logger.exception(f"Excel не отправлен (send_document): {e}")
+        else:
+            reason = "файл пустой (0 байт)" if result.get("excel_bytes") is not None else "excel_bytes = None"
+            logger.warning(f"Excel НЕ отправлен: {reason} (ошибки: {result.get('errors', [])})")
 
         logger.info(f"Анализ дороги завершён: {lat}, {lon}")
 
