@@ -17,6 +17,7 @@ def generate_excel_report(
     lat: float, lon: float, address: str,
     vlm_result: dict[str, Any], osm_data: dict[str, Any] | None = None,
     gibdd_nearby: list[dict] | None = None,
+    panorama_images: list[dict] | None = None,
 ) -> bytes:
     """Генерирует Excel-файл с результатами оценки участка дороги."""
     try:
@@ -156,7 +157,33 @@ def generate_excel_report(
                 cell.font = normal_font
                 cell.border = thin_border
 
-    # --- Лист 4: JSON ---
+    # --- Лист 4: Панорамы ---
+    if panorama_images:
+        try:
+            from openpyxl.drawing.image import Image as XlImage
+            ws_pan = wb.create_sheet("Панорамы")
+            ws_pan[f"A1"] = "ФОТОГРАФИИ УЧАСТКА"
+            ws_pan[f"A1"].font = title_font
+            ws_pan[f"A2"] = "Использованы для VLM-анализа"
+            row_pan = 4
+            for pano in panorama_images:
+                heading = pano.get("heading", 0)
+                pano_bytes = pano.get("bytes")
+                if not pano_bytes:
+                    continue
+                ws_pan.cell(row=row_pan, column=1, value=f"Панорама {int(heading)}°").font = header_font
+                row_pan += 1
+                img_stream = io.BytesIO(pano_bytes)
+                img = XlImage(img_stream)
+                img.width = 640
+                img.height = 360
+                ws_pan.add_image(img, f"A{row_pan}")
+                row_pan += 20  # отступ для следующего фото
+            ws_pan.column_dimensions["A"].width = 15
+        except Exception as e:
+            logger.debug(f"Панорамы в Excel: {e}")
+
+    # --- Лист 5: JSON ---
     ws4 = wb.create_sheet("Полные данные")
     ws4["A1"] = "Полный JSON VLM"
     ws4["A1"].font = title_font
