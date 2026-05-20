@@ -84,14 +84,12 @@ EXPERT_PROMPT = """Ты — российский эксперт-дорожник
 
 
 def _build_hotspot_section(hotspot_context: str) -> str:
-    """Формирует секцию с данными об очаге ДТП для промпта."""
     if not hotspot_context:
         return ""
     return f"\nДополнительный контекст — это ОЧАГ ДТП (место концентрации аварийности):\n{hotspot_context}\n"
 
 
 def _compress_image(b64: str, max_px: int = 960, quality: int = 55) -> str:
-    """Сжимает JPEG-изображение: уменьшает разрешение + качество."""
     try:
         img_bytes = base64.b64decode(b64)
         img = Image.open(io.BytesIO(img_bytes))
@@ -116,9 +114,6 @@ async def _call_vlm_api(
     model: str,
     max_retries: int = 3,
 ) -> dict[str, Any] | None:
-    """Низкоуровневый вызов VLM API с retry на 429.
-    Возвращает результат анализа или None если все попытки исчерпаны (429).
-    """
     payload = {
         "model": model,
         "messages": [{"role": "user", "content": content}],
@@ -148,7 +143,7 @@ async def _call_vlm_api(
             return {"error": f"Ошибка VLM: {e}"}
         except Exception as e:
             return {"error": f"Ошибка VLM: {e}"}
-    return None  # все попытки исчерпаны — 429
+    return None
 
 
 async def analyze_road_images(
@@ -159,15 +154,7 @@ async def analyze_road_images(
     model: str = "glm-4v-flash",
     hotspot_context: str = "",
 ) -> dict[str, Any]:
-    """Отправляет изображения в VLM для анализа с fallback-стратегией.
-
-    Стратегия (инвертированная — от малого к большему):
-    1. Начинаем с 1 фото (карта сверху + 1 панорама 0°) — минимальная нагрузка
-    2. Если 429 → пауза 30с и повторяем 1 фото
-    3. Если ок и есть больше фото → пробуем 3 фото (карта + 2 панорамы)
-    4. Если 3 фото ок и есть все → пробуем все фото
-    5. Если всё fail → пауза 90с, последняя попытка с 1 фото
-    """
+    """Отправляет изображения в VLM для анализа с fallback-стратегией."""
     if not images_b64_list:
         return {"error": "Нет изображений для анализа"}
     if not api_key:
@@ -179,7 +166,6 @@ async def analyze_road_images(
         hotspot_section=hotspot_section,
     )
 
-    # Сжимаем все изображения для снижения нагрузки на API
     logger.info(f"VLM: сжатие {len(images_b64_list)} изображений...")
     compressed = []
     for b64 in images_b64_list:
@@ -199,31 +185,29 @@ async def analyze_road_images(
         content.append({"type": "text", "text": prompt})
         return content
 
-    # Формируем набор изображений: карта + панорамы
-    # images_b64_list = [карта, панорама_0, панорама_90, панорама_180, панорама_270]
-    map_img = compressed[0] if compressed else None  # карта сверху
-    panoramas = compressed[1:] if len(compressed) > 1 else []  # панорамы
-    pano_0 = panoramas[0] if panoramas else None  # главная панорама (0°)
+    map_img = compressed[0] if compressed else None
+    panoramas = compressed[1:] if len(compressed) > 1 else []
+    pano_0 = panoramas[0] if panoramas else None
     pano_180 = panoramas[2] if len(panoramas) >= 3 else (panoramas[-1] if panoramas else None)
 
-    # Попытка 1: 1 фото (только карта — нет панорам, но даёт контекст дороги)
+    # Попытка 1: 1 фото (карта)
     if map_img:
         logger.info("VLM: попытка 1 — 1 фото (карта)")
         result = await _call_vlm_api(_build_content([map_img]), api_key, api_url, model, max_retries=2)
         if result is not None:
             return result
 
-    # Попытка 2: пауза 30с + 1 фото (карта + панорама 0°)
-    logger.info("VLM: попытка 2 — пауза 30с, потом 2 фото (карта + панорама 0°)")
+    # Попытка 2: пауза 30с + 2 фото
+    logger.info("VLM: попытка 2 — пауза 30с, 2 фото")
     await asyncio.sleep(30)
     if map_img and pano_0:
         result = await _call_vlm_api(_build_content([map_img, pano_0]), api_key, api_url, model, max_retries=2)
         if result is not None:
             return result
 
-    # Попытка 3: пауза 15с + 3 фото (карта + 0° + 180°)
+    # Попытка 3: пауза 15с + 3 фото
     if len(compressed) >= 4 and map_img and pano_0 and pano_180:
-        logger.info("VLM: попытка 3 — 3 фото (карта + 0° + 180°)")
+        logger.info("VLM: попытка 3 — 3 фото")
         await asyncio.sleep(15)
         result = await _call_vlm_api(
             _build_content([map_img, pano_0, pano_180]),
@@ -242,7 +226,7 @@ async def analyze_road_images(
         if result is not None:
             return result
 
-    return {"error": "VLM недоступен (429). Попробуйте через 5-10 минут или проверьте баланс API."}
+    return {"error": "VLM недоступен (429). Попробуйте через 5-10 минут."}
 
 
 def _parse_vlm_response(text: str) -> dict[str, Any]:
@@ -286,22 +270,20 @@ def format_expert_assessment(
     if infra:
         lines.append("ИНФРАСТРУКТУРА:")
         p = infra.get("lighting_poles", "не видно")
-        p_emoji = '✅' if p in ("да", "есть") else ('⚠️' if p == "не видно" else '❌')
+        p_emoji = "✅" if p in ("да", "есть") else ("⚠️" if p == "не видно" else "❌")
         lines.append(f"  {p_emoji} Опоры: {p} ({infra.get('pole_count', 0)} шт.)")
         w = infra.get("wires_visible", "не видно")
-        w_emoji = '✅' if w in ("да", "есть") else ('⚠️' if w == "не видно" else '❌')
+        w_emoji = "✅" if w in ("да", "есть") else ("⚠️" if w == "не видно" else "❌")
         lines.append(f"  {w_emoji} Провода: {w}")
         m = infra.get("median", "нет")
-        m_emoji = '✅' if m in ("да", "есть", "присутствует") else '❌'
+        m_emoji = "✅" if m in ("да", "есть", "присутствует") else "❌"
         lines.append(f"  {m_emoji} Разделительная: {m}")
         lines.append(f"  Тип дороги: {infra.get('road_type', '?')}")
         lines.append(f"  Полосы: {infra.get('lane_count', '?')}")
-        # Скоростной режим из OSM (не из VLM)
         if osm_data:
             osm_speed = osm_data.get("road_info", {}).get("maxspeed")
             if osm_speed:
-                lines.append(f"  🚗 Скоростной режим: {osm_speed} км/ч (OSM)")
-
+                lines.append(f"  Скоростной режим: {osm_speed} км/ч (OSM)")
         sw = infra.get("sidewalk", "")
         if sw:
             lines.append(f"  Тротуар: {sw}")
@@ -355,7 +337,6 @@ def format_expert_assessment(
     if notes:
         lines.append(f"ЗАМЕТКИ: {notes}")
 
-    # LLM-анализ ДТП
     if dtp_analysis:
         lines.append("")
         lines.append(f"АНАЛИЗ ДТП: {dtp_analysis}")
