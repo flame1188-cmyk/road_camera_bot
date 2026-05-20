@@ -258,6 +258,7 @@ def _parse_vlm_response(text: str) -> dict[str, Any]:
 def format_expert_assessment(
     vlm_result: dict[str, Any], lat: float, lon: float,
     address: str = "", osm_data: dict | None = None,
+    dtp_analysis: str = "",
 ) -> str:
     """Форматирует результаты анализа в сообщение для Telegram."""
     if "error" in vlm_result:
@@ -340,5 +341,10 @@ def format_expert_assessment(
     notes = vlm_result.get("visual_notes", "")
     if notes:
         lines.append(f"ЗАМЕТКИ: {notes}")
+
+    # LLM-анализ ДТП
+    if dtp_analysis:
+        lines.append("")
+        lines.append(f"АНАЛИЗ ДТП: {dtp_analysis}")
 
     return "\n".join(lines)
