@@ -332,7 +332,10 @@ async def _do_road_check(update: Update, context: ContextTypes.DEFAULT_TYPE, tex
             vlm_api_url=VLM_API_URL,
             vlm_model=VLM_MODEL,
             progress_callback=progress,
+            directions=[0.0, 90.0, 180.0, 270.0],
         )
+
+        address = result.get("address", "")
 
         try:
             await status.delete()
@@ -342,10 +345,13 @@ async def _do_road_check(update: Update, context: ContextTypes.DEFAULT_TYPE, tex
         # Отправляем скриншот карты
         if result.get("map_image_bytes"):
             try:
+                caption = f"📍 {lat}, {lon}"
+                if address:
+                    caption += f"\n{address}"
                 await context.bot.send_photo(
                     chat_id=chat_id,
                     photo=result["map_image_bytes"],
-                    caption=f"📍 {lat}, {lon}{chr(10)}{address}" if address else f"📍 {lat}, {lon}",
+                    caption=caption,
                 )
             except Exception:
                 pass
