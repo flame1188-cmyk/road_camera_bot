@@ -1,30 +1,20 @@
 """
 Определение кода региона GIBDD по координатам (lat, lon).
 
-Коды регионов взяты из справочника GIBDD Open Data API:
-http://xn--80a7adb.xn--90adear.xn--p1ai/opendataapi/v1/dictionary/rows?code=1
-
 Основной метод: Nominatim reverse geocoding -> извлечение региона -> маппинг на код GIBDD.
 Резервный метод: Haversine до ближайшего центра региона (неточный у границ).
 """
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import math
 import re
-from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# ============================================================
 # Маппинг "нормализованное название региона" -> (gibdd_code, display_name)
-# Ключи — нормализованные названия (нижний регистр, без "республика",
-# "область", "обл.", "край", "АО" и т.п. — только корень).
-# ============================================================
 _REGION_NAME_MAP: dict[str, tuple[str, str]] = {
-    # --- Центральный ФО ---
     "москва": ("1145", "г. Москва"),
     "московская": ("1146", "Московская обл."),
     "белгородская": ("1114", "Белгородская обл."),
@@ -43,7 +33,6 @@ _REGION_NAME_MAP: dict[str, tuple[str, str]] = {
     "тверская": ("1128", "Тверская обл."),
     "тульская": ("1170", "Тульская обл."),
     "ярославская": ("1178", "Ярославская обл."),
-    # --- Северо-Западный ФО ---
     "карел": ("1186", "Республика Карелия"),
     "коми": ("1187", "Республика Коми"),
     "архангельская": ("1111", "Архангельская обл."),
@@ -55,7 +44,6 @@ _REGION_NAME_MAP: dict[str, tuple[str, str]] = {
     "псковская": ("1158", "Псковская обл."),
     "ненецкий": ("1151", "Ненецкий АО"),
     "санкт-петербург": ("1140", "г. Санкт-Петербург"),
-    # --- Южный ФО ---
     "адыгея": ("1179", "Республика Адыгея (Адыгея)"),
     "астраханская": ("1112", "Астраханская обл."),
     "волгоградская": ("1118", "Волгоградская обл."),
@@ -71,7 +59,6 @@ _REGION_NAME_MAP: dict[str, tuple[str, str]] = {
     "карачаево-черкесская": ("1191", "Карачаево-Черкесская Республика"),
     "чеченская": ("1196", "Чеченская Республика"),
     "севастополь": ("1106", "гор. Севастополь"),
-    # --- Приволжский ФО ---
     "башкортостан": ("1180", "Республика Башкортостан"),
     "марий эл": ("1188", "Республика Марий Эл"),
     "мордовия": ("1189", "Республика Мордовия"),
@@ -86,14 +73,12 @@ _REGION_NAME_MAP: dict[str, tuple[str, str]] = {
     "саратовская": ("1163", "Саратовская обл."),
     "ульяновская": ("1173", "Ульяновская обл."),
     "пермский": ("1157", "Пермский край"),
-    # --- Уральский ФО ---
     "курганская": ("1137", "Курганская обл."),
     "свердловская": ("1165", "Свердловская обл."),
     "тюменская": ("1171", "Тюменская обл."),
     "челябинская": ("1175", "Челябинская обл."),
     "ханты-мансийский": ("1162", "Ханты-Мансийский АО - Югра"),
     "ямало-ненецкий": ("1172", "Ямало-Ненецкий АО"),
-    # --- Сибирский ФО ---
     "алтайский": ("1101", "Алтайский край"),
     "алтай": ("1184", "Республика Алтай"),
     "бурятия": ("1181", "Республика Бурятия"),
@@ -106,7 +91,6 @@ _REGION_NAME_MAP: dict[str, tuple[str, str]] = {
     "томская": ("1169", "Томская обл."),
     "забайкальский": ("1176", "Забайкальский край"),
     "иркутская": ("1125", "Иркутская обл."),
-    # --- Дальневосточный ФО ---
     "амурская": ("1110", "Амурская обл."),
     "еврейская": ("1199", "Еврейская автономная область"),
     "камчатский": ("1130", "Камчатский край"),
@@ -117,19 +101,12 @@ _REGION_NAME_MAP: dict[str, tuple[str, str]] = {
     "якутия": ("1198", "Республика Саха (Якутия)"),
     "саха": ("1198", "Республика Саха (Якутия)"),
     "чукотский": ("1177", "Чукотский АО"),
-    # --- Новые территории ---
     "донецкая": ("1123", "Донецкая Народная Республика"),
     "луганская": ("1121", "Луганская Народная Республика"),
     "запорожская": ("1113", "Запорожская область"),
     "херсонская": ("1102", "Херсонская область"),
-    # --- Прочие ---
     "сириус": ("1255", "Сириус"),
 }
-
-
-# ============================================================
-# Нормализация названия региона
-# ============================================================
 
 _STRIP_PATTERNS = re.compile(
     r"^(?:республика\s+|город\s+|гор\.?\s*|г\.\s*)"
@@ -139,44 +116,22 @@ _STRIP_PATTERNS = re.compile(
 
 
 def _normalize_region_name(name: str) -> str:
-    """Нормализует название региона для поиска в _REGION_NAME_MAP.
-
-    Примеры:
-        "Московская область" -> "московская"
-        "Республика Татарстан (Татарстан)" -> "татарстан"
-        "г. Санкт-Петербург" -> "санкт-петербург"
-        "Кабардино-Балкарская Республика" -> "кабардино-балкарская"
-    """
     n = _STRIP_PATTERNS.sub(" ", name).strip()
-    n = re.sub(r"\s+\([^)]+\)", "", n).strip()  # убираем (в скобках)
+    n = re.sub(r"\s+\([^)]+\)", "", n).strip()
     n = re.sub(r"\s+-\s*Югра", "", n, flags=re.IGNORECASE).strip()
     n = re.sub(r"-\s*Кузбасс", "", n, flags=re.IGNORECASE).strip()
-    n = re.sub(r"\s+[-–—]\s*.*$", "", n).strip()  # убираем " - Чувашия" и т.п.
+    n = re.sub(r"\s+[-–—]\s*.*$", "", n).strip()
     return n.lower().strip()
 
 
-# ============================================================
-# Nominatim-based region detection (основной метод)
-# ============================================================
-
 async def _fetch_nominatim_region(lat: float, lon: float) -> tuple[str, str] | None:
-    """Определяет регион через Nominatim reverse geocoding.
-
-    Nominatim использует реальные административные границы OSM,
-    поэтому точно определяет регион даже у границы областей.
-
-    Returns:
-        Tuple (region_name_from_nominatim, source_field) или None.
-    """
     import httpx
-
     url = "https://nominatim.openstreetmap.org/reverse"
     params = {
         "lat": str(lat), "lon": str(lon),
         "format": "json", "accept-language": "ru", "zoom": 10,
     }
     headers = {"User-Agent": "RoadAssessmentBot/1.0"}
-
     try:
         async with httpx.AsyncClient(verify=False, timeout=15) as client:
             resp = await client.get(url, params=params, headers=headers)
@@ -190,14 +145,10 @@ async def _fetch_nominatim_region(lat: float, lon: float) -> tuple[str, str] | N
     if not address:
         return None
 
-    # Приоритет полей для определения региона
     region_raw = (
-        address.get("state")
-        or address.get("region")
-        or ""
+        address.get("state") or address.get("region") or ""
     ).strip()
 
-    # Проверяем федеральные города
     city_raw = (address.get("city") or "").strip()
     _FEDERAL_CITIES = {"москва", "санкт-петербург", "севастополь"}
     if city_raw.lower() in _FEDERAL_CITIES:
@@ -210,79 +161,45 @@ async def _fetch_nominatim_region(lat: float, lon: float) -> tuple[str, str] | N
 
 
 def get_gibdd_code_by_region_name(region_name: str) -> tuple[str, str] | None:
-    """Определяет код GIBDD по названию региона из Nominatim.
-
-    Args:
-        region_name: Название региона (полное, из Nominatim).
-
-    Returns:
-        Tuple (gibdd_code, display_name) или None.
-    """
-    # 1. Прямой поиск по полному названию
     normalized = _normalize_region_name(region_name)
     if normalized in _REGION_NAME_MAP:
         code, display = _REGION_NAME_MAP[normalized]
         logger.info(f"Nominatim -> GIBDD: \"{region_name}\" -> \"{display}\" (код {code})")
         return (code, display)
 
-    # 2. Поиск по словам (для составных названий)
     words = normalized.replace("-", " ").split()
     for w in words:
         if len(w) < 4:
             continue
         if w in _REGION_NAME_MAP:
             code, display = _REGION_NAME_MAP[w]
-            logger.info(f"Nominatim -> GIBDD: \"{region_name}\" -> \"{display}\" (код {code}, по слову \"{w}\")")
+            logger.info(f"Nominatim -> GIBDD: \"{region_name}\" -> \"{display}\" (код {code}, слово \"{w}\")")
             return (code, display)
 
-    # 3. Проверяем вхождение ключа в название региона
     for key, (code, display) in _REGION_NAME_MAP.items():
         if key in normalized or normalized in key:
-            logger.info(f"Nominatim -> GIBDD: \"{region_name}\" -> \"{display}\" (код {code}, частичное совпадение)")
+            logger.info(f"Nominatim -> GIBDD: \"{region_name}\" -> \"{display}\" (частичное)")
             return (code, display)
 
-    logger.warning(f"Nominatim -> GIBDD: регион \"{region_name}\" не найден в маппинге (norm: \"{normalized}\")")
+    logger.warning(f"Nominatim -> GIBDD: регион \"{region_name}\" не найден (norm: \"{normalized}\")")
     return None
 
 
-# ============================================================
-# Главный метод (async)
-# ============================================================
-
 async def find_region_by_coords(lat: float, lon: float) -> tuple[str, str] | None:
-    """Определяет код региона GIBDD по координатам.
-
-    Стратегия:
-    1. Nominatim reverse geocoding (точный, по реальным границам)
-    2. Fallback: Haversine до ближайшего центра (приближённый)
-
-    Returns:
-        Tuple (gibdd_code, region_name) или None если координаты вне РФ.
-    """
-    # --- Метод 1: Nominatim (точный) ---
     nominatim_result = await _fetch_nominatim_region(lat, lon)
     if nominatim_result:
-        region_name_raw, source_field = nominatim_result
+        region_name_raw, _ = nominatim_result
         gibdd_match = get_gibdd_code_by_region_name(region_name_raw)
         if gibdd_match:
             return gibdd_match
-        logger.warning(f"Nominatim определил регион \"{region_name_raw}\", но маппинг не найден")
+        logger.warning(f"Nominatim: регион \"{region_name_raw}\", маппинг не найден")
 
-    # --- Метод 2: Haversine (резервный) ---
-    logger.info(f"GIBDD: fallback на Haversine для {lat}, {lon}")
+    logger.info(f"GIBDD: fallback Haversine для {lat}, {lon}")
     return _find_region_by_haversine(lat, lon)
 
 
-# ============================================================
-# Haversine fallback (резервный метод)
-# ============================================================
-
 def _find_region_by_haversine(lat: float, lon: float) -> tuple[str, str] | None:
-    """Резервный метод: Haversine до ближайшего центра региона.
-
-    Неточный у границ областей! Используется только если Nominatim недоступен.
-    """
-    _REGION_CENTERS: list[tuple[float, float, str, str]] = [
+    _REGION_CENTERS = [
         (55.76, 37.62, "1145", "г. Москва"),
         (55.50, 37.50, "1146", "Московская обл."),
         (50.59, 36.59, "1114", "Белгородская обл."),
@@ -377,7 +294,6 @@ def _find_region_by_haversine(lat: float, lon: float) -> tuple[str, str] | None:
     best_dist = float("inf")
     best_code = None
     best_name = None
-
     lat_r = math.radians(lat)
     lon_r = math.radians(lon)
 
@@ -389,21 +305,14 @@ def _find_region_by_haversine(lat: float, lon: float) -> tuple[str, str] | None:
         a = (math.sin(dlat / 2) ** 2
              + math.cos(rlat_r) * math.cos(lat_r) * math.sin(dlon / 2) ** 2)
         dist = 2 * math.asin(math.sqrt(min(a, 1.0)))
-
         if dist < best_dist:
             best_dist = dist
             best_code = code
             best_name = name
 
     if best_dist > 3.5:
-        logger.warning(
-            f"Координаты {lat}, {lon} — за пределами РФ "
-            f"(ближайший: {best_name}, {best_dist * 6371:.0f} км)"
-        )
+        logger.warning(f"Координаты {lat}, {lon} — за пределами РФ")
         return None
 
-    logger.info(
-        f"GIBDD (Haversine fallback): {lat}, {lon} -> "
-        f"{best_name} (код {best_code}, ~{best_dist * 6371:.0f} км)"
-    )
+    logger.info(f"GIBDD (Haversine): {lat}, {lon} -> {best_name} ({best_code})")
     return (best_code, best_name)
