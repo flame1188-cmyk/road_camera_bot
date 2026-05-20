@@ -387,9 +387,11 @@ async def analyze_road_section(
             f"OSM={'да' if osm_data else 'нет'}, vlm={'да' if vlm_result else 'нет'})"
         )
         excel_data = generate_excel_report(
-            lat, lon, address, vlm_result, osm_data,
-            result["nearby_accidents"], result.get("panorama_images"),
-            result.get("narodnaya_map_bytes"),
+            lat=lat, lon=lon, address=address,
+            vlm_result=vlm_result, osm_data=osm_data,
+            gibdd_nearby=result["nearby_accidents"],
+            panorama_images=result.get("panorama_images"),
+            narodnaya_map_bytes=result.get("narodnaya_map_bytes"),
         )
         result["excel_bytes"] = excel_data
         result["excel_filename"] = get_report_filename(lat, lon)

@@ -100,6 +100,9 @@ async def get_narodnaya_map_screenshot(
 
     Народная карта показывает: скоростные ограничения, камеры фиксации,
     опасные участки, лежащих полицейских, ямы на дорогах.
+
+    Стратегия: открываем обычную карту, затем через UI включаем слой
+    Народной карты (кнопка «Слои» → «Народная карта»).
     """
     if not Path(CHROMIUM_PATH).exists():
         logger.error(f"Chromium не найден — Народная карта пропущена")
@@ -111,6 +114,7 @@ async def get_narodnaya_map_screenshot(
         logger.error("Playwright не установлен")
         return None
 
+    # Сначала пробуем URL с параметром narodmap (может работать в некоторых версиях)
     url = (
         f"https://yandex.ru/maps/?from=map&ll={lon}%2C{lat}&z={zoom}"
         f"&l=map,narodmap"
@@ -148,14 +152,46 @@ async def get_narodnaya_map_screenshot(
                 except Exception:
                     logger.debug("Народная карта: ground-pane не найден, пробуем дальше")
 
-                # Дополнительно ждём, чтобы слой Народной карты прогрузился
-                await asyncio.sleep(5)
+                # Ждём рендеринг
+                await asyncio.sleep(4)
+
+                # Пытаемся включить Народную карту через UI (если URL-параметр не сработал)
+                # Ищем кнопку «Слои» в интерфейсе Яндекс.Карт
+                narodnaya_enabled = False
+                try:
+                    # Способ 1: ищем кнопку с текстом «Слои»
+                    layers_btn = page.locator("text=Слои").first
+                    if await layers_btn.is_visible(timeout=3000):
+                        await layers_btn.click()
+                        await asyncio.sleep(1)
+
+                        # В открывшейся панели ищем «Народная карта»
+                        narod_item = page.locator("text=Народная карта").first
+                        if await narod_item.is_visible(timeout=3000):
+                            await narod_item.click()
+                            narodnaya_enabled = True
+                            logger.info("Народная карта: включена через UI")
+                            await asyncio.sleep(3)  # ждём загрузку слоя
+
+                            # Закрываем панель слоёв (клик по фону)
+                            await page.keyboard.press("Escape")
+                            await asyncio.sleep(1)
+                        else:
+                            logger.debug("Народная карта: пункт не найден в панели слоёв")
+                    else:
+                        logger.debug("Народная карта: кнопка «Слои» не найдена")
+                except Exception as e:
+                    logger.debug(f"Народная карта: UI-активация не удалась ({e})")
+
+                # Дополнительно ждём прогрузку слоя
+                await asyncio.sleep(3)
 
                 screenshot_bytes = await page.screenshot(type="jpeg", quality=85)
 
                 if screenshot_bytes and len(screenshot_bytes) >= 10000:
                     b64 = base64.b64encode(screenshot_bytes).decode("utf-8")
-                    logger.info(f"Народная карта: OK ({len(screenshot_bytes)} байт)")
+                    status = "включена" if narodnaya_enabled else "URL-параметр"
+                    logger.info(f"Народная карта: OK ({len(screenshot_bytes)} байт, {status})")
                     return {
                         "base64": b64,
                         "bytes": screenshot_bytes,
@@ -198,10 +234,7 @@ async def get_yandex_panorama_screenshots(
     """Получает скриншоты Яндекс Панорамы через Playwright + системный Chromium.
 
     Стратегия: ОДНА страница — загружаем панораму один раз, затем вращаем
-    стрелками клавиатуры (ArrowRight / ArrowLeft). Это гарантирует:
-      - Панорама не перезагружается (нет лишних запросов → меньше шансов на капчу)
-      - Стрелки клавиатуры — стандартный способ вращения в Яндекс.Картах
-      - Каждое нажатие ~15°, 6 нажатий ≈ 90°
+    стрелками клавиатуры (ArrowRight / ArrowLeft) методом зажатия (down/up).
     """
     if directions is None:
         directions = [0.0]
@@ -247,10 +280,11 @@ async def get_yandex_panorama_screenshots(
             pass
         return False
 
-    # Расстояние клавиш для поворота: ~6 нажатий ArrowRight ≈ 90°
-    _KEY_PRESSES_PER_90 = 6
-    _KEY_STEP_DELAY = 0.4   # пауза между нажатиями (сек)
-    _TILE_LOAD_WAIT = 6     # ожидание загрузки тайлов после поворота (сек)
+    # Поворот стрелками: 1 короткое нажатие ≈ 2° (проверено на практике).
+    # Используем зажатие клавиши (down/up) — при удержании стрелка
+    # вращает панораму быстрее, ~25°/сек. Для 90° нужно ~3.6с удержания.
+    _DEGREES_PER_SECOND = 25  # скорость при зажатой клавише (°/сек)
+    _TILE_LOAD_WAIT = 5     # ожидание загрузки тайлов после поворота (сек)
     _INITIAL_LOAD_WAIT = 8  # ожидание загрузки панорамы при открытии (сек)
 
     try:
@@ -316,19 +350,26 @@ async def get_yandex_panorama_screenshots(
                             # Выбираем направление поворота (короткий путь)
                             if diff <= 180:
                                 key = "ArrowRight"
-                                steps = round(diff / 15.0)  # ~15° за нажатие
+                                turn_degrees = diff
                             else:
                                 key = "ArrowLeft"
-                                steps = round((360 - diff) / 15.0)
+                                turn_degrees = 360 - diff
 
-                            steps = max(steps, 1)
-                            logger.info(f"  направление {target_dir}°: поворот ({key} x{steps})...")
+                            # Рассчитываем время удержания клавиши
+                            hold_seconds = turn_degrees / _DEGREES_PER_SECOND
+                            hold_seconds = max(hold_seconds, 0.3)
 
-                            for _ in range(steps):
-                                await page.keyboard.press(key)
-                                await asyncio.sleep(_KEY_STEP_DELAY)
+                            logger.info(
+                                f"  направление {target_dir}°: поворот "
+                                f"({key}, {turn_degrees:.0f}°, {hold_seconds:.1f}с)..."
+                            )
 
-                            # Ждём загрузку тайлов для нового ракурса
+                            # Зажимаем клавишу и удерживаем нужное время
+                            await page.keyboard.down(key)
+                            await asyncio.sleep(hold_seconds)
+                            await page.keyboard.up(key)
+
+                            # Ждём загрузки тайлов для нового ракурса
                             await asyncio.sleep(_TILE_LOAD_WAIT)
                         else:
                             if idx == 0:

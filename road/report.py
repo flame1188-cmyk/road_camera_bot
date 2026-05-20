@@ -18,15 +18,21 @@ def generate_excel_report(
     vlm_result: dict[str, Any], osm_data: dict[str, Any] | None = None,
     gibdd_nearby: list[dict] | None = None,
     panorama_images: list[dict] | None = None,
+    narodnaya_map_bytes: bytes | None = None,
 ) -> bytes:
     """Генерирует Excel-файл с результатами оценки участка дороги."""
     try:
         from openpyxl import Workbook
         from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
         from openpyxl.utils import get_column_letter
-    except ImportError:
-        logger.error("openpyxl не установлен")
+    except ImportError as e:
+        logger.error(f"openpyxl не установлен: {e}")
         return b""
+
+    if not vlm_result:
+        logger.warning("Excel: vlm_result пустой, генерация с минимальными данными")
+        vlm_result = {"expediency": {"efficiency_score": 0}, "infrastructure": {},
+                       "road_objects": {}, "technical_feasibility": {}, "visual_notes": ""}
 
     wb = Workbook()
     title_font = Font(bold=True, size=14)
@@ -158,7 +164,7 @@ def generate_excel_report(
                 cell.border = thin_border
 
     # --- Лист 4: Панорамы ---
-    if panorama_images:
+    if panorama_images or narodnaya_map_bytes:
         try:
             from openpyxl.drawing.image import Image as XlImage
             ws_pan = wb.create_sheet("Панорамы")
@@ -166,6 +172,19 @@ def generate_excel_report(
             ws_pan[f"A1"].font = title_font
             ws_pan[f"A2"] = "Использованы для VLM-анализа"
             row_pan = 4
+
+            # Народная карта (первой — она содержит скоростные ограничения)
+            if narodnaya_map_bytes:
+                ws_pan.cell(row=row_pan, column=1, value="Народная карта (скоростные режимы)").font = header_font
+                row_pan += 1
+                img_stream = io.BytesIO(narodnaya_map_bytes)
+                img = XlImage(img_stream)
+                img.width = 640
+                img.height = 360
+                ws_pan.add_image(img, f"A{row_pan}")
+                row_pan += 20
+
+            # Панорамы
             for pano in panorama_images:
                 heading = pano.get("heading", 0)
                 pano_bytes = pano.get("bytes")
@@ -181,7 +200,7 @@ def generate_excel_report(
                 row_pan += 20  # отступ для следующего фото
             ws_pan.column_dimensions["A"].width = 15
         except Exception as e:
-            logger.debug(f"Панорамы в Excel: {e}")
+            logger.warning(f"Панорамы в Excel: {e}")
 
     # --- Лист 5: JSON ---
     ws4 = wb.create_sheet("Полные данные")
@@ -191,9 +210,15 @@ def generate_excel_report(
     ws4.column_dimensions["A"].width = 100
 
     buf = io.BytesIO()
-    wb.save(buf)
-    buf.seek(0)
-    return buf.getvalue()
+    try:
+        wb.save(buf)
+        buf.seek(0)
+        result = buf.getvalue()
+        logger.info(f"Excel: сгенерирован {len(result)} байт, {len(wb.sheetnames)} листов")
+        return result
+    except Exception as e:
+        logger.error(f"Excel: ошибка сохранения wb — {e}")
+        return b""
 
 
 def get_report_filename(lat: float, lon: float) -> str:
