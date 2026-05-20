@@ -110,13 +110,14 @@ async def analyze_road_images(
     }
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
 
-    max_retries = 3
+    retry_delays = [15, 30, 45, 60, 90]
+    max_retries = len(retry_delays)
     for attempt in range(max_retries):
         try:
             async with httpx.AsyncClient(verify=False, timeout=120) as client:
                 resp = await client.post(api_url, json=payload, headers=headers)
                 if resp.status_code == 429:
-                    wait = 10 * (attempt + 1)
+                    wait = retry_delays[attempt]
                     logger.warning(f"VLM 429, повтор через {wait}с (попытка {attempt + 1}/{max_retries})")
                     await asyncio.sleep(wait)
                     continue
