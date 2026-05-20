@@ -59,8 +59,13 @@ def parse_coordinates(text: str) -> tuple[float, float] | None:
     return None
 
 
-async def geocode_address(lat: float, lon: float) -> str:
-    """Получает адрес по координатам через Nominatim."""
+async def geocode_address(lat: float, lon: float) -> tuple[str, dict]:
+    """Получает адрес по координатам через Nominatim.
+
+    Returns:
+        Tuple (address_string, raw_nominatim_data).
+        raw_nominatim_data содержит "address" с полями state, city и т.д.
+    """
     import httpx
     url = "https://nominatim.openstreetmap.org/reverse"
     params = {"lat": str(lat), "lon": str(lon), "format": "json", "accept-language": "ru", "zoom": 18}
@@ -73,10 +78,10 @@ async def geocode_address(lat: float, lon: float) -> str:
         parts = address.split(", ")
         if len(parts) > 5:
             address = ", ".join(parts[:5])
-        return address
+        return (address, data)
     except Exception as e:
         logger.warning(f"Геокодирование: {e}")
-        return ""
+        return ("", {})
 
 
 async def find_nearby_accidents(
@@ -231,8 +236,9 @@ async def analyze_road_section(
 
     # Шаг 1: Адрес
     await update_progress(f"Определение адреса...\nКоординаты: {lat}, {lon}")
-    address = await geocode_address(lat, lon)
+    address, nominatim_data = await geocode_address(lat, lon)
     result["address"] = address
+    result["_nominatim_data"] = nominatim_data  # сохраняем для GIBDD
 
     # Шаг 2: Параллельно — изображения + OSM
     await update_progress(f"Сбор изображений и данных OSM...\nАдрес: {address or 'определяется...'}")
@@ -259,8 +265,30 @@ async def analyze_road_section(
     if auto_load_gibdd:
         await update_progress("Определение региона и загрузка данных ДТП...")
         try:
-            from gibdd.region_mapper import find_region_by_coords
-            region_info = find_region_by_coords(lat, lon)
+            from gibdd.region_mapper import (
+                find_region_by_coords, get_gibdd_code_by_region_name,
+            )
+
+            region_info = None
+
+            # Сначала пробуем определить регион из уже полученных Nominatim данных
+            # (без дополнительного HTTP-запроса)
+            naddr = nominatim_data.get("address", {}) if nominatim_data else {}
+            region_raw = (
+                naddr.get("state") or naddr.get("region") or ""
+            ).strip()
+            city_raw = (naddr.get("city") or "").strip()
+            _FEDERAL_CITIES = {"москва", "санкт-петербург", "севастополь"}
+
+            if city_raw.lower() in _FEDERAL_CITIES:
+                region_info = get_gibdd_code_by_region_name(city_raw)
+            elif region_raw:
+                region_info = get_gibdd_code_by_region_name(region_raw)
+
+            # Если Nominatim не дал результат — пробуем через отдельный запрос
+            if not region_info:
+                region_info = await find_region_by_coords(lat, lon)
+
             if region_info:
                 region_code, region_name = region_info
                 result["gibdd_region"] = f"{region_name} ({region_code})"

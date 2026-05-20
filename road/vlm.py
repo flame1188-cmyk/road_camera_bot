@@ -60,9 +60,11 @@ EXPERT_PROMPT = """Ты — российский эксперт-дорожник
 - Рекомендуемые направления съёмки (азимуты в градусах)
 
 5. ТЕХНИЧЕСКАЯ ВОЗМОЖНОСТЬ УСТАНОВКИ:
-- Питание: от опор освещения / отдельная линия / нет
-- Установка на существующую опору: возможно/нет
-- Необходим фундамент: да/нет
+ВАЖНО: Комплексы фотовидеофиксации ПДД routinely устанавливаются на СУЩЕСТВУЮЩИЕ опоры уличного освещения (световые точки) с помощью кронштейнов и консолей. Это стандартная и наиболее распространённая практика в РФ — не нужен отдельный фундамент, не нужно строить новую опору. Наличие опор освещения с проводами рядом с дорогой — это ПРЯМОЕ ПОДТВЕРЖДЕНИЕ возможности установки камеры.
+Установка на существующую опору НЕВОЗМОЖНА только если: опор нет вообще, опоры деревянные/хрупкие/деформированные, опоры слишком далеко от дороги, опоры скрыты за постройками и не дают обзора.
+- Питание: от опор освещения / отдельная линия / нет (если видны провода на опорах — питание возможно от них)
+- Установка на существующую опору: возможно/нет (ОБЯЗАТЕЛЬНО ставь "возможно" если на снимках видны металлические/бетонные опоры освещения у дороги)
+- Необходим фундамент: да/нет (фундамент НУЖЕН только если нет подходящих опор — в противном случае ставь "нет")
 - Помехи обзорности (деревья, столбы, здания): перечислить
 - Общая оценка обзорности: отличная/хорошая/удовлетворительная/плохая
 
@@ -159,11 +161,12 @@ async def analyze_road_images(
 ) -> dict[str, Any]:
     """Отправляет изображения в VLM для анализа с fallback-стратегией.
 
-    Стратегия:
-    1. Пробуем все фото (сжатые до 960px, качество 55)
-    2. Если 429 → пробуем 2 фото (0° и 180°)
-    3. Если снова 429 → пробуем 1 фото (0°)
-    4. Если всё fail → пробуем 2 фото ещё раз после паузы 60с
+    Стратегия (инвертированная — от малого к большему):
+    1. Начинаем с 1 фото (карта сверху + 1 панорама 0°) — минимальная нагрузка
+    2. Если 429 → пауза 30с и повторяем 1 фото
+    3. Если ок и есть больше фото → пробуем 3 фото (карта + 2 панорамы)
+    4. Если 3 фото ок и есть все → пробуем все фото
+    5. Если всё fail → пауза 90с, последняя попытка с 1 фото
     """
     if not images_b64_list:
         return {"error": "Нет изображений для анализа"}
@@ -196,40 +199,50 @@ async def analyze_road_images(
         content.append({"type": "text", "text": prompt})
         return content
 
-    # Попытка 1: все фото (сжатые)
-    logger.info(f"VLM: попытка с {len(compressed)} фото (сжатые)")
-    result = await _call_vlm_api(_build_content(compressed), api_key, api_url, model)
-    if result is not None:
-        return result
+    # Формируем набор изображений: карта + панорамы
+    # images_b64_list = [карта, панорама_0, панорама_90, панорама_180, панорама_270]
+    map_img = compressed[0] if compressed else None  # карта сверху
+    panoramas = compressed[1:] if len(compressed) > 1 else []  # панорамы
+    pano_0 = panoramas[0] if panoramas else None  # главная панорама (0°)
+    pano_180 = panoramas[2] if len(panoramas) >= 3 else (panoramas[-1] if panoramas else None)
 
-    # Попытка 2: только 2 фото (0° и 180°)
-    if len(compressed) > 2:
-        pair = [compressed[0], compressed[2]] if len(compressed) >= 3 else [compressed[0], compressed[-1]]
-        logger.info("VLM: fallback — 2 фото (0° и 180°)")
-        await asyncio.sleep(5)
-        result = await _call_vlm_api(_build_content(pair), api_key, api_url, model)
+    # Попытка 1: 1 фото (только карта — нет панорам, но даёт контекст дороги)
+    if map_img:
+        logger.info("VLM: попытка 1 — 1 фото (карта)")
+        result = await _call_vlm_api(_build_content([map_img]), api_key, api_url, model, max_retries=2)
         if result is not None:
             return result
 
-    # Попытка 3: только 1 фото (0°)
-    logger.info("VLM: fallback — 1 фото (0°)")
-    await asyncio.sleep(10)
-    result = await _call_vlm_api(_build_content([compressed[0]]), api_key, api_url, model)
-    if result is not None:
-        return result
+    # Попытка 2: пауза 30с + 1 фото (карта + панорама 0°)
+    logger.info("VLM: попытка 2 — пауза 30с, потом 2 фото (карта + панорама 0°)")
+    await asyncio.sleep(30)
+    if map_img and pano_0:
+        result = await _call_vlm_api(_build_content([map_img, pano_0]), api_key, api_url, model, max_retries=2)
+        if result is not None:
+            return result
 
-    # Попытка 4: финальная — 2 фото после длинной паузы
-    if len(compressed) >= 2:
-        logger.info("VLM: финальная попытка — 2 фото после паузы 60с")
-        await asyncio.sleep(60)
+    # Попытка 3: пауза 15с + 3 фото (карта + 0° + 180°)
+    if len(compressed) >= 4 and map_img and pano_0 and pano_180:
+        logger.info("VLM: попытка 3 — 3 фото (карта + 0° + 180°)")
+        await asyncio.sleep(15)
         result = await _call_vlm_api(
-            _build_content([compressed[0], compressed[-1]]),
-            api_key, api_url, model,
+            _build_content([map_img, pano_0, pano_180]),
+            api_key, api_url, model, max_retries=2,
         )
         if result is not None:
             return result
 
-    return {"error": "VLM недоступен (429). Попробуйте позже или проверьте баланс API."}
+    # Попытка 4: финальная — пауза 90с, 2 фото
+    logger.info("VLM: финальная попытка — пауза 90с, 2 фото")
+    await asyncio.sleep(90)
+    if map_img and pano_0:
+        result = await _call_vlm_api(
+            _build_content([map_img, pano_0]), api_key, api_url, model, max_retries=2,
+        )
+        if result is not None:
+            return result
+
+    return {"error": "VLM недоступен (429). Попробуйте через 5-10 минут или проверьте баланс API."}
 
 
 def _parse_vlm_response(text: str) -> dict[str, Any]:

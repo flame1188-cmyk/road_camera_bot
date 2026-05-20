@@ -280,12 +280,14 @@ async def get_yandex_panorama_screenshots(
             pass
         return False
 
-    # Поворот стрелками: 1 короткое нажатие ≈ 2° (проверено на практике).
-    # Используем зажатие клавиши (down/up) — при удержании стрелка
-    # вращает панораму быстрее, ~25°/сек. Для 90° нужно ~3.6с удержания.
-    _DEGREES_PER_SECOND = 25  # скорость при зажатой клавише (°/сек)
-    _TILE_LOAD_WAIT = 5     # ожидание загрузки тайлов после поворота (сек)
-    _INITIAL_LOAD_WAIT = 8  # ожидание загрузки панорамы при открытии (сек)
+    # Поворот стрелками: 1 короткое нажатие keyboard.press() ≈ 2° (проверено
+    # на практике). Для 90° нужно ~45 нажатий. Метод hold (down/up) ненадёжен:
+    # в headless Chromium keydown/keyup не всегда вызывают непрерывное вращение.
+    # Поэтому используем повторные keyboard.press() с задержкой 60мс между ними.
+    _DEG_PER_PRESS = 2.0       # градусов на одно нажатие
+    _PRESS_INTERVAL = 0.06     # секунд между нажатиями (60мс)
+    _TILE_LOAD_WAIT = 4       # ожидание загрузки тайлов после поворота (сек)
+    _INITIAL_LOAD_WAIT = 8    # ожидание загрузки панорамы при открытии (сек)
 
     try:
         async with async_playwright() as p:
@@ -355,19 +357,17 @@ async def get_yandex_panorama_screenshots(
                                 key = "ArrowLeft"
                                 turn_degrees = 360 - diff
 
-                            # Рассчитываем время удержания клавиши
-                            hold_seconds = turn_degrees / _DEGREES_PER_SECOND
-                            hold_seconds = max(hold_seconds, 0.3)
-
+                            # Рассчитываем количество нажатий
+                            num_presses = max(int(round(turn_degrees / _DEG_PER_PRESS)), 1)
                             logger.info(
                                 f"  направление {target_dir}°: поворот "
-                                f"({key}, {turn_degrees:.0f}°, {hold_seconds:.1f}с)..."
+                                f"({key}, {turn_degrees:.0f}°, {num_presses} нажатий)..."
                             )
 
-                            # Зажимаем клавишу и удерживаем нужное время
-                            await page.keyboard.down(key)
-                            await asyncio.sleep(hold_seconds)
-                            await page.keyboard.up(key)
+                            # Повторные нажатия для надёжного поворота
+                            for _ in range(num_presses):
+                                await page.keyboard.press(key)
+                                await asyncio.sleep(_PRESS_INTERVAL)
 
                             # Ждём загрузки тайлов для нового ракурса
                             await asyncio.sleep(_TILE_LOAD_WAIT)
