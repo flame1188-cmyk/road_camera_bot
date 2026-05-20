@@ -333,6 +333,7 @@ async def _do_road_check(update: Update, context: ContextTypes.DEFAULT_TYPE, tex
             vlm_model=VLM_MODEL,
             progress_callback=progress,
             directions=[0.0, 90.0, 180.0, 270.0],
+            auto_load_gibdd=True,
         )
 
         address = result.get("address", "")
@@ -352,6 +353,18 @@ async def _do_road_check(update: Update, context: ContextTypes.DEFAULT_TYPE, tex
                     chat_id=chat_id,
                     photo=result["map_image_bytes"],
                     caption=caption,
+                )
+            except Exception:
+                pass
+
+        # Отправляем Народную карту (скоростные режимы)
+        narodnaya_bytes = result.get("narodnaya_map_bytes")
+        if narodnaya_bytes:
+            try:
+                await context.bot.send_photo(
+                    chat_id=chat_id,
+                    photo=narodnaya_bytes,
+                    caption=f"🗺 Народная карта\n📍 {lat}, {lon}",
                 )
             except Exception:
                 pass
