@@ -87,6 +87,94 @@ async def check_yandex_panorama(lat: float, lon: float) -> dict[str, Any] | None
 
 
 # ========================
+# Яндекс Народная карта — скриншот через Playwright
+# ========================
+
+async def get_narodnaya_map_screenshot(
+    lat: float, lon: float,
+    zoom: int = 17,
+    width: int = 1280, height: int = 720,
+    timeout_ms: int = 30000,
+) -> dict[str, Any] | None:
+    """Скриншот Яндекс.Карт с включённым слоем Народной карты.
+
+    Народная карта показывает: скоростные ограничения, камеры фиксации,
+    опасные участки, лежащих полицейских, ямы на дорогах.
+    """
+    if not Path(CHROMIUM_PATH).exists():
+        logger.error(f"Chromium не найден — Народная карта пропущена")
+        return None
+
+    try:
+        from playwright.async_api import async_playwright
+    except ImportError:
+        logger.error("Playwright не установлен")
+        return None
+
+    url = (
+        f"https://yandex.ru/maps/?from=map&ll={lon}%2C{lat}&z={zoom}"
+        f"&l=map,narodmap"
+    )
+
+    chromium_args = [
+        "--no-sandbox", "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage", "--disable-gpu",
+        "--disable-software-rasterizer",
+    ]
+
+    logger.info(f"Народная карта (Playwright): {lat}, {lon}, z={zoom}")
+
+    try:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(
+                headless=True, executable_path=CHROMIUM_PATH, args=chromium_args,
+            )
+            try:
+                page = await browser.new_page(
+                    viewport={"width": width, "height": height},
+                    user_agent=_USER_AGENT,
+                )
+
+                # Блокируем лишние ресурсы
+                await page.route("**/*.{woff,woff2,ttf,eot}", lambda route: route.abort())
+                await page.route("**/*analytics*", lambda route: route.abort())
+                await page.route("**/*metric*", lambda route: route.abort())
+
+                await page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
+
+                # Ждём загрузки карты
+                try:
+                    await page.wait_for_selector(".ground-pane", timeout=15000)
+                except Exception:
+                    logger.debug("Народная карта: ground-pane не найден, пробуем дальше")
+
+                # Дополнительно ждём, чтобы слой Народной карты прогрузился
+                await asyncio.sleep(5)
+
+                screenshot_bytes = await page.screenshot(type="jpeg", quality=85)
+
+                if screenshot_bytes and len(screenshot_bytes) >= 10000:
+                    b64 = base64.b64encode(screenshot_bytes).decode("utf-8")
+                    logger.info(f"Народная карта: OK ({len(screenshot_bytes)} байт)")
+                    return {
+                        "base64": b64,
+                        "bytes": screenshot_bytes,
+                        "source": "narodnaya_map",
+                    }
+                else:
+                    logger.warning(
+                        f"Народная карта: скриншот маленький "
+                        f"({len(screenshot_bytes) if screenshot_bytes else 0} байт)"
+                    )
+            finally:
+                await browser.close()
+    except Exception as e:
+        logger.error(f"Народная карта: {e}")
+
+    return None
+
+
+# ========================
 # Яндекс Панорамы — скриншот через Playwright
 # ========================
 
@@ -107,7 +195,14 @@ async def get_yandex_panorama_screenshots(
     width: int = 1280, height: int = 720,
     timeout_ms: int = 30000,
 ) -> list[dict[str, Any]]:
-    """Получает скриншоты Яндекс Панорамы через Playwright + системный Chromium."""
+    """Получает скриншоты Яндекс Панорамы через Playwright + системный Chromium.
+
+    Стратегия: ОДНА страница — загружаем панораму один раз, затем вращаем
+    стрелками клавиатуры (ArrowRight / ArrowLeft). Это гарантирует:
+      - Панорама не перезагружается (нет лишних запросов → меньше шансов на капчу)
+      - Стрелки клавиатуры — стандартный способ вращения в Яндекс.Картах
+      - Каждое нажатие ~15°, 6 нажатий ≈ 90°
+    """
     if directions is None:
         directions = [0.0]
 
@@ -134,6 +229,30 @@ async def get_yandex_panorama_screenshots(
         "--disable-software-rasterizer",
     ]
 
+    # Ключевые слова для обнаружения капчи / Smart Captcha Яндекса
+    _CAPTCHA_KEYWORDS = [
+        "капч", "captcha", "robot", "проверк",
+        "smart captcha", "i'm not a robot", "not a robot",
+        "подтвердите", "confirm", "security",
+    ]
+
+    async def _is_captcha(pg) -> bool:
+        """Проверяет наличие капчи по тексту страницы."""
+        try:
+            page_text = await pg.inner_text("body")
+            if page_text:
+                lower = page_text.lower()
+                return any(kw in lower for kw in _CAPTCHA_KEYWORDS)
+        except Exception:
+            pass
+        return False
+
+    # Расстояние клавиш для поворота: ~6 нажатий ArrowRight ≈ 90°
+    _KEY_PRESSES_PER_90 = 6
+    _KEY_STEP_DELAY = 0.4   # пауза между нажатиями (сек)
+    _TILE_LOAD_WAIT = 6     # ожидание загрузки тайлов после поворота (сек)
+    _INITIAL_LOAD_WAIT = 8  # ожидание загрузки панорамы при открытии (сек)
+
     try:
         async with async_playwright() as p:
             browser = await p.chromium.launch(
@@ -147,27 +266,90 @@ async def get_yandex_panorama_screenshots(
                     user_agent=_USER_AGENT,
                 )
 
-                # Блокируем лишние ресурсы для скорости
-                await page.route("**/*.{png,jpg,jpeg,gif,svg,woff,woff2,ttf,eot}",
-                                 lambda route: route.abort())
+                # Блокируем ТОЛЬКО шрифты и аналитику.
+                # НЕ блокируем изображения — тайлы панорамы нужны для canvas.
+                await page.route("**/*.{woff,woff2,ttf,eot}", lambda route: route.abort())
                 await page.route("**/*analytics*", lambda route: route.abort())
                 await page.route("**/*metric*", lambda route: route.abort())
 
-                for direction in directions:
-                    url = _build_panorama_url(lat, lon, direction)
+                # Загружаем панораму (направление 0° по умолчанию)
+                url = _build_panorama_url(lat, lon, 0.0)
+                logger.info(f"  загрузка панорамы (начальный ракурс 0°)...")
+                await page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
+
+                # Ждём canvas (панорама рендерится в canvas)
+                try:
+                    await page.wait_for_selector("canvas", timeout=15000)
+                except Exception:
+                    logger.debug("  canvas не найден")
+
+                # Полная загрузка тайлов панорамы
+                await asyncio.sleep(_INITIAL_LOAD_WAIT)
+
+                # Проверяем капчу сразу после загрузки
+                if await _is_captcha(page):
+                    logger.warning("  обнаружена проверка при загрузке, все направления пропущены")
+                    await page.close()
+                    return results
+
+                # Фокусируемся на canvas для приёма клавиш
+                try:
+                    await page.click("canvas")
+                    await asyncio.sleep(0.5)
+                except Exception:
+                    logger.debug("  не удалось кликнуть по canvas")
+
+                # Логируем финальный URL для отладки
+                final_url = page.url
+                logger.info(f"  панорама загружена, URL: {final_url[:120]}...")
+
+                # === Снимаем все направления на ОДНОЙ странице ===
+                current_dir = 0.0
+
+                for idx, target_dir in enumerate(directions):
                     try:
-                        logger.info(f"  направление {direction}°: загрузка...")
-                        await page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
+                        # Рассчитываем поворот от текущего направления
+                        diff = (target_dir - current_dir) % 360
 
-                        # Ждём canvas (панорама рендерится в canvas)
-                        try:
-                            await page.wait_for_selector("canvas", timeout=15000)
-                        except Exception:
-                            logger.debug(f"  направление {direction}°: canvas не найден")
+                        # Если нужно повернуться
+                        if idx > 0 and diff > 0.1:
+                            # Выбираем направление поворота (короткий путь)
+                            if diff <= 180:
+                                key = "ArrowRight"
+                                steps = round(diff / 15.0)  # ~15° за нажатие
+                            else:
+                                key = "ArrowLeft"
+                                steps = round((360 - diff) / 15.0)
 
-                        await asyncio.sleep(3)
+                            steps = max(steps, 1)
+                            logger.info(f"  направление {target_dir}°: поворот ({key} x{steps})...")
 
+                            for _ in range(steps):
+                                await page.keyboard.press(key)
+                                await asyncio.sleep(_KEY_STEP_DELAY)
+
+                            # Ждём загрузку тайлов для нового ракурса
+                            await asyncio.sleep(_TILE_LOAD_WAIT)
+                        else:
+                            if idx == 0:
+                                logger.info(f"  направление {target_dir}°: снимок...")
+
+                        # Проверяем капчу
+                        if await _is_captcha(page):
+                            logger.warning(f"  направление {target_dir}°: обнаружена проверка, остальные пропущены")
+                            break
+
+                        # Скриншот
                         screenshot_bytes = await page.screenshot(type="jpeg", quality=80)
+
+                        # Проверка: капча может быть визуальной (без текста) —
+                        # тогда скриншот будет маленьким (< 40 KB)
+                        if screenshot_bytes and len(screenshot_bytes) < 40000:
+                            logger.warning(
+                                f"  направление {target_dir}°: подозрительно маленький "
+                                f"скриншот ({len(screenshot_bytes)} байт) — возможно, проверка/капча, пропуск"
+                            )
+                            continue
 
                         if screenshot_bytes and len(screenshot_bytes) >= 15000:
                             b64 = base64.b64encode(screenshot_bytes).decode("utf-8")
@@ -175,16 +357,22 @@ async def get_yandex_panorama_screenshots(
                                 "base64": b64,
                                 "bytes": screenshot_bytes,
                                 "source": "yandex_panorama",
-                                "heading": direction,
+                                "heading": target_dir,
                             })
-                            logger.info(f"  направление {direction}°: OK ({len(screenshot_bytes)} байт)")
+                            logger.info(f"  направление {target_dir}°: OK ({len(screenshot_bytes)} байт)")
                         else:
                             logger.warning(
-                                f"  направление {direction}°: "
+                                f"  направление {target_dir}°: "
                                 f"скриншот маленький ({len(screenshot_bytes) if screenshot_bytes else 0} байт)"
                             )
+
+                        current_dir = target_dir
+
                     except Exception as e:
-                        logger.error(f"  направление {direction}°: {e}")
+                        logger.error(f"  направление {target_dir}°: {e}")
+                        continue
+
+                await page.close()
             finally:
                 await browser.close()
     except Exception as e:
@@ -211,6 +399,7 @@ async def collect_road_images(
         "street_images": [],
         "panorama_available": False,
         "sources_used": [],
+        "narodnaya_map": None,
     }
 
     # 1. Яндекс Static Map (схема)
@@ -220,7 +409,13 @@ async def collect_road_images(
         result["map_image_b64"] = base64.b64encode(map_img).decode("utf-8")
         result["sources_used"].append("yandex_map")
 
-    # 2. Яндекс Панорама через Playwright
+    # 2. Яндекс Народная карта (скоростные ограничения, камеры)
+    narodnaya = await get_narodnaya_map_screenshot(lat, lon, zoom=17)
+    if narodnaya:
+        result["narodnaya_map"] = narodnaya
+        result["sources_used"].append("narodnaya_map")
+
+    # 3. Яндекс Панорама через Playwright
     panorama_shots = await get_yandex_panorama_screenshots(
         lat, lon, directions=directions,
     )
@@ -229,7 +424,7 @@ async def collect_road_images(
         result["panorama_available"] = True
         result["sources_used"].append(f"yandex_panorama({len(panorama_shots)} фото)")
 
-    # 3. Проверка наличия панорамы (API)
+    # 4. Проверка наличия панорамы (API)
     if not result["panorama_available"]:
         pano_check = await check_yandex_panorama(lat, lon)
         if pano_check:

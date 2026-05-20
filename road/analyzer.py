@@ -366,22 +366,40 @@ async def analyze_road_section(
 
     # Сохраняем байты для отправки пользователю
     result["map_image_bytes"] = images_result.get("map_image_bytes")
-    result["narodnaya_map_bytes"] = images_result.get("narodnaya_map", {}).get("bytes")
+    narod_map = images_result.get("narodnaya_map")
+    result["narodnaya_map_bytes"] = narod_map.get("bytes") if narod_map else None
     result["panorama_images"] = [
         {"bytes": img["bytes"], "heading": img.get("heading", 0)}
         for img in images_result.get("street_images", [])
         if img.get("bytes")
     ]
+    logger.info(
+        f"Данные для отправки: карта={bool(result['map_image_bytes'])}, "
+        f"нар.карта={bool(result['narodnaya_map_bytes'])}, "
+        f"панорамы={len(result['panorama_images'])} шт."
+    )
 
     # Шаг 6: Excel
     try:
-        result["excel_bytes"] = generate_excel_report(
+        logger.info(
+            f"Генерация Excel-отчёта... (панорамы={len(result.get('panorama_images', []))}, "
+            f"ДТП={len(result.get('nearby_accidents', []))}, "
+            f"OSM={'да' if osm_data else 'нет'}, vlm={'да' if vlm_result else 'нет'})"
+        )
+        excel_data = generate_excel_report(
             lat, lon, address, vlm_result, osm_data,
             result["nearby_accidents"], result.get("panorama_images"),
             result.get("narodnaya_map_bytes"),
         )
+        result["excel_bytes"] = excel_data
         result["excel_filename"] = get_report_filename(lat, lon)
+        if excel_data:
+            logger.info(f"Excel: OK ({len(excel_data)} байт)")
+        else:
+            logger.warning("Excel: generate_excel_report вернул пустые данные (0 байт)")
     except Exception as e:
+        logger.exception(f"Excel: ошибка генерации — {e}")
         result["errors"].append(f"Excel: {e}")
+        result["excel_bytes"] = None
 
     return result
