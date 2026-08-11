@@ -1,0 +1,113 @@
+{
+  "alcohol": 1,
+  "by_hour": {
+    "8": 1,
+    "14": 3,
+    "23": 1
+  },
+  "by_hour_severity": {
+    "14": {
+      "deaths": 1,
+      "dtp": 3,
+      "injured": 2
+    },
+    "23": {
+      "deaths": 0,
+      "dtp": 1,
+      "injured": 1
+    },
+    "8": {
+      "deaths": 0,
+      "dtp": 1,
+      "injured": 2
+    }
+  },
+  "by_month": {
+    "Май": {
+      "deaths": 1,
+      "dtp": 5,
+      "injured": 5
+    }
+  },
+  "by_road": {
+    "Р-5": 5
+  },
+  "by_road_significance": {
+    "Федеральные": {
+      "deaths": 1,
+      "dtp": 5,
+      "injured": 5
+    }
+  },
+  "by_type": {
+    "Иной вид ДТП": 1,
+    "Наезд на пешехода": 1,
+    "Столкновение": 3
+  },
+  "by_type_grouped": {
+    "Иные ДТП": 1,
+    "Наезд на пешехода": 1,
+    "Столкновение": 3
+  },
+  "by_type_grouped_severity": {
+    "Иные ДТП": {
+      "deaths": 0,
+      "dtp": 1,
+      "injured": 1
+    },
+    "Наезд на пешехода": {
+      "deaths": 0,
+      "dtp": 1,
+      "injured": 2
+    },
+    "Столкновение": {
+      "deaths": 1,
+      "dtp": 3,
+      "injured": 2
+    }
+  },
+  "by_weather": {
+    "Ясно": 5
+  },
+  "by_weather_severity": {
+    "Ясно": {
+      "deaths": 1,
+      "dtp": 5,
+      "injured": 5
+    }
+  },
+  "by_weekday": {
+    "3": 2,
+    "4": 1,
+    "5": 1,
+    "6": 1
+  },
+  "by_weekday_severity": {
+    "3": {
+      "deaths": 0,
+      "dtp": 2,
+      "injured": 2
+    },
+    "4": {
+      "deaths": 1,
+      "dtp": 1,
+      "injured": 0
+    },
+    "5": {
+      "deaths": 0,
+      "dtp": 1,
+      "injured": 1
+    },
+    "6": {
+      "deaths": 0,
+      "dtp": 1,
+      "injured": 2
+    }
+  },
+  "deaths": 1,
+  "deaths_per_100": 20.0,
+  "injured": 5,
+  "injured_per_100": 100.0,
+  "pedestrians": 1,
+  "total": 5
+}

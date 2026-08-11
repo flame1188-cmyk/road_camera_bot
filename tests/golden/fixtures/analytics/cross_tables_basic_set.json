@@ -1,0 +1,273 @@
+{
+  "alcohol_x_district": {
+    "Центральный": {
+      "да": 1,
+      "нет": 4
+    }
+  },
+  "alcohol_x_hour": {
+    "да": {
+      "21:00-23:59": 1
+    },
+    "нет": {
+      "06:00-08:59": 1,
+      "12:00-14:59": 3
+    }
+  },
+  "alcohol_x_road_value": {
+    "Федеральные": {
+      "да": 1,
+      "нет": 4
+    }
+  },
+  "alcohol_x_weekday": {
+    "да": {
+      "5": 1
+    },
+    "нет": {
+      "3": 2,
+      "4": 1,
+      "6": 1
+    }
+  },
+  "belt_x_severity": {
+    "Пристегнут": {
+      "deaths": 1,
+      "injured": 4,
+      "participants": 5,
+      "unhurt": 0
+    }
+  },
+  "district_x_severity": {
+    "Центральный": {
+      "deaths": 1,
+      "dtp": 5,
+      "injured": 5
+    }
+  },
+  "dtp_type_x_district": {
+    "Центральный": {
+      "Иной вид ДТП": 1,
+      "Наезд на пешехода": 1,
+      "Столкновение": 3
+    }
+  },
+  "dtp_type_x_hour": {
+    "06:00-08:59": {
+      "Наезд на пешехода": 1
+    },
+    "12:00-14:59": {
+      "Иной вид ДТП": 1,
+      "Столкновение": 2
+    },
+    "21:00-23:59": {
+      "Столкновение": 1
+    }
+  },
+  "dtp_type_x_road_value": {
+    "Федеральные": {
+      "Иной вид ДТП": 1,
+      "Наезд на пешехода": 1,
+      "Столкновение": 3
+    }
+  },
+  "dtp_type_x_severity": {
+    "Иной вид ДТП": {
+      "deaths": 0,
+      "dtp": 1,
+      "injured": 1
+    },
+    "Наезд на пешехода": {
+      "deaths": 0,
+      "dtp": 1,
+      "injured": 2
+    },
+    "Столкновение": {
+      "deaths": 1,
+      "dtp": 3,
+      "injured": 2
+    }
+  },
+  "experience_x_severity": {
+    "3-5 лет": {
+      "deaths": 1,
+      "injured": 4,
+      "participants": 5,
+      "unhurt": 0
+    }
+  },
+  "experience_x_violations": {
+    "3-5 лет": {
+      "Превышение скорости": 5
+    }
+  },
+  "factor_x_severity": {},
+  "gender_x_severity": {
+    "Женщина": {
+      "deaths": 0,
+      "injured": 1,
+      "participants": 1,
+      "unhurt": 0
+    },
+    "Мужчина": {
+      "deaths": 1,
+      "injured": 4,
+      "participants": 5,
+      "unhurt": 0
+    }
+  },
+  "hour_x_severity": {
+    "06:00-08:59": {
+      "deaths": 0,
+      "dtp": 1,
+      "injured": 2
+    },
+    "12:00-14:59": {
+      "deaths": 1,
+      "dtp": 3,
+      "injured": 2
+    },
+    "21:00-23:59": {
+      "deaths": 0,
+      "dtp": 1,
+      "injured": 1
+    }
+  },
+  "lighting_x_pedestrian_share": {
+    "В светлое время суток": {
+      "dtp_with_ped": 1,
+      "total_dtp": 5
+    }
+  },
+  "lighting_x_severity": {
+    "В светлое время суток": {
+      "deaths": 1,
+      "dtp": 5,
+      "injured": 5
+    }
+  },
+  "month_x_severity": {
+    "Май": {
+      "deaths": 1,
+      "dtp": 5,
+      "injured": 5
+    }
+  },
+  "ndu_x_severity": {},
+  "objects_addr_x_severity": {},
+  "participant_category_x_severity": {
+    "водитель": {
+      "deaths": 1,
+      "injured": 4,
+      "participants": 5,
+      "unhurt": 0
+    },
+    "пешеход": {
+      "deaths": 0,
+      "injured": 1,
+      "participants": 1,
+      "unhurt": 0
+    }
+  },
+  "road_name_x_severity": {
+    "Р-5": {
+      "deaths": 1,
+      "dtp": 5,
+      "injured": 5,
+      "road_value": "Федеральные"
+    }
+  },
+  "road_value_x_dtp_type": {
+    "Федерального значения": {
+      "Иной вид ДТП": 1,
+      "Наезд на пешехода": 1,
+      "Столкновение": 3
+    }
+  },
+  "road_value_x_severity": {
+    "Федерального значения": {
+      "deaths": 1,
+      "dtp": 5,
+      "injured": 5
+    }
+  },
+  "s_pch_x_severity": {
+    "Сухое": {
+      "deaths": 1,
+      "dtp": 5,
+      "injured": 5
+    }
+  },
+  "street_x_severity": {
+    "Магистральная улица (Вологда)": {
+      "deaths": 1,
+      "dtp": 5,
+      "injured": 5
+    }
+  },
+  "vehicle_age_x_severity": {
+    "0-3 года": {
+      "deaths": 1,
+      "dtp": 5,
+      "injured": 5
+    }
+  },
+  "vehicle_brand_x_severity": {
+    "LADA": {
+      "deaths": 1,
+      "dtp": 5,
+      "injured": 5
+    }
+  },
+  "vehicle_type_x_severity": {
+    "Легковой автомобиль": {
+      "deaths": 1,
+      "injured": 4,
+      "participants": 5,
+      "unhurt": 0
+    }
+  },
+  "vehicles_count_x_severity": {
+    "2 ТС": {
+      "deaths": 1,
+      "dtp": 5,
+      "injured": 5
+    }
+  },
+  "weather_x_dtp_type": {
+    "Ясно": {
+      "Иной вид ДТП": 1,
+      "Наезд на пешехода": 1,
+      "Столкновение": 3
+    }
+  },
+  "weather_x_severity": {
+    "Ясно": {
+      "deaths": 1,
+      "dtp": 5,
+      "injured": 5
+    }
+  },
+  "weekday_x_severity": {
+    "Воскресенье": {
+      "deaths": 0,
+      "dtp": 1,
+      "injured": 2
+    },
+    "Пятница": {
+      "deaths": 1,
+      "dtp": 1,
+      "injured": 0
+    },
+    "Суббота": {
+      "deaths": 0,
+      "dtp": 1,
+      "injured": 1
+    },
+    "Четверг": {
+      "deaths": 0,
+      "dtp": 2,
+      "injured": 2
+    }
+  }
+}
