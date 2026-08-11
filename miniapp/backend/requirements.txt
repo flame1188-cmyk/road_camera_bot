@@ -1,0 +1,40 @@
+# Web framework
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20
+
+# Settings & validation
+pydantic==2.10.4
+pydantic-settings==2.7.1
+
+# HTTP client (используется существующими модулями gibdd-bot)
+httpx==0.27.0
+
+# Excel generation (для excel_generator.py)
+openpyxl==3.1.5
+xlrd==2.0.1
+
+# Environment
+python-dotenv==1.0.1
+
+# Geo (для concentration_points.py)
+shapely==2.0.6
+
+# Database (PostgreSQL через async-pool; opционально — если DATABASE_URL задан,
+# задачи и аудит-лог персистятся в БД; иначе работает in-memory fallback)
+psycopg[binary,pool]>=3.2,<4
+
+# Rate limiting (Фаза 1.5) — лимит запросов на пользователя
+slowapi>=0.1.9
+
+# Prometheus metrics (Фаза 1.6) — /metrics endpoint
+prometheus-fastapi-instrumentator>=7.0.0
+
+# Optional: LLM (включается, если нужен AI-анализ)
+# zhipuai==2.1.0
+
+# Logging
+loguru==0.7.3
+
+# SSE streaming (Sprint 4) — Server-Sent Events для LLM streaming endpoints
+sse-starlette>=2.0,<4

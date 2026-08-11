@@ -1,0 +1,109 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* === Reset === */
+* {
+  -webkit-tap-highlight-color: transparent;
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--tg-color-bg, #ffffff);
+  color: var(--tg-color-text, #000000);
+  font-family: var(--tg-font, system-ui, -apple-system, 'Segoe UI', sans-serif);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  /* Поддержка safe-area на iPhone (notch) */
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* === Telegram-совместимые компоненты === */
+@layer components {
+  .tg-button {
+    @apply w-full py-3 px-4 rounded-xl font-medium text-center transition-colors active:opacity-80;
+    background-color: var(--tg-color-button, #2481cc);
+    color: var(--tg-color-button-text, #ffffff);
+  }
+
+  .tg-button:disabled {
+    @apply opacity-50 cursor-not-allowed;
+  }
+
+  .tg-input {
+    @apply w-full py-3 px-4 rounded-xl border-0 outline-none transition-colors;
+    background-color: var(--tg-color-secondary-bg, #f1f1f1);
+    color: var(--tg-color-text, #000000);
+  }
+
+  .tg-input::placeholder {
+    color: var(--tg-color-hint, #999999);
+  }
+
+  .tg-input:focus {
+    background-color: var(--tg-color-secondary-bg, #e8e8e8);
+  }
+
+  .tg-card {
+    @apply rounded-2xl p-4 mb-3;
+    background-color: var(--tg-color-section-bg, #ffffff);
+  }
+
+  .tg-section-header {
+    @apply text-xs font-semibold uppercase tracking-wider mb-2 px-1;
+    color: var(--tg-color-section-header-text, #999999);
+  }
+
+  .tg-link {
+    color: var(--tg-color-link, #2481cc);
+    text-decoration: none;
+  }
+
+  .tg-link:active {
+    opacity: 0.7;
+  }
+}
+
+/* === Утилиты === */
+.scroll-area {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.scroll-area::-webkit-scrollbar {
+  width: 4px;
+}
+
+.scroll-area::-webkit-scrollbar-thumb {
+  background: var(--tg-color-hint, #ccc);
+  border-radius: 2px;
+}
+
+/* === Анимация прогресс-бара === */
+@keyframes progress-stripes {
+  from { background-position: 0 0; }
+  to { background-position: 40px 0; }
+}
+
+.progress-stripes {
+  background-image: linear-gradient(
+    45deg,
+    rgba(255,255,255,.15) 25%,
+    transparent 25%,
+    transparent 50%,
+    rgba(255,255,255,.15) 50%,
+    rgba(255,255,255,.15) 75%,
+    transparent 75%,
+    transparent
+  );
+  background-size: 40px 40px;
+  animation: progress-stripes 1s linear infinite;
+}

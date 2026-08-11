@@ -1,0 +1,61 @@
+# ============================================================
+# docker-compose для GIBDD Mini App
+#
+# Запуск:
+#   1. Скопируйте .env.example в .env и заполните TELEGRAM_BOT_TOKEN
+#   2. docker compose up -d --build
+#   3. Откройте http://localhost:8000/health для проверки
+#   4. Для production — настройте Nginx reverse proxy с TLS (см. nginx.conf)
+# ============================================================
+
+services:
+  miniapp:
+    build:
+      context: ..
+      dockerfile: miniapp/Dockerfile
+    container_name: gibdd-miniapp
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    environment:
+      - APP_HOST=0.0.0.0
+      - APP_PORT=8000
+      - APP_WORKERS=2
+    ports:
+      - "8000:8000"
+    volumes:
+      # Монтируем код gibdd-bot (для разработки без пересборки)
+      - ../:/gibdd-bot:ro
+      # Кэш камер и регионов (персистентный)
+      - gibdd_data:/gibdd-bot/data
+      # Временные файлы задач
+      - tasks_data:/tmp/gibdd_tasks
+    networks:
+      - miniapp-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # Опционально: Redis для будущего перехода на Celery
+  # Раскомментируйте, когда добавите асинхронные задачи
+  # redis:
+  #   image: redis:7-alpine
+  #   container_name: gibdd-redis
+  #   restart: unless-stopped
+  #   volumes:
+  #     - redis_data:/data
+  #   networks:
+  #     - miniapp-net
+  #   command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru
+
+volumes:
+  gibdd_data:
+  tasks_data:
+  # redis_data:
+
+networks:
+  miniapp-net:
+    driver: bridge

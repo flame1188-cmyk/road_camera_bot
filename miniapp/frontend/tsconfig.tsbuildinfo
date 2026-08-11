@@ -1,0 +1,1 @@
+{"root":["./src/App.tsx","./src/main.tsx","./src/vite-env.d.ts","./src/components/HistoryList.tsx","./src/components/MapFrame.tsx","./src/components/ProgressIndicator.tsx","./src/components/RequestForm.tsx","./src/components/ResultsPanel.tsx","./src/hooks/useTaskPolling.ts","./src/lib/api.ts","./src/lib/telegram.ts","./src/lib/utils.ts"],"version":"5.9.3"}
