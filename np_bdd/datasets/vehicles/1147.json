@@ -1,0 +1,12 @@
+{
+  "region_code": "1147",
+  "region_name": "Мурманская область",
+  "vehicles_by_year": {
+    "2023": 320588,
+    "2024": 334788,
+    "2025": 283223,
+    "2026": 283223
+  },
+  "source": "Excel: vehicles_kts.xlsx",
+  "loaded_at": "2026-07-31"
+}

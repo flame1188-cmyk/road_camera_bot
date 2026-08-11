@@ -1,0 +1,12 @@
+{
+  "region_code": "1103",
+  "region_name": "Краснодарский край",
+  "vehicles_by_year": {
+    "2023": 2240309,
+    "2024": 2289270,
+    "2025": 2834711,
+    "2026": 2834711
+  },
+  "source": "Excel: vehicles_kts.xlsx",
+  "loaded_at": "2026-07-31"
+}

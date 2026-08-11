@@ -1,0 +1,12 @@
+{
+  "region_code": "1106",
+  "region_name": "г. Севастополь",
+  "vehicles_by_year": {
+    "2023": 175542,
+    "2024": 180241,
+    "2025": 147239,
+    "2026": 147239
+  },
+  "source": "Excel: vehicles_kts.xlsx",
+  "loaded_at": "2026-07-31"
+}

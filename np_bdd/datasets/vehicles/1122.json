@@ -1,0 +1,12 @@
+{
+  "region_code": "1122",
+  "region_name": "Нижегородская область",
+  "vehicles_by_year": {
+    "2023": 1612540,
+    "2024": 1698079,
+    "2025": 1268986,
+    "2026": 1268986
+  },
+  "source": "Excel: vehicles_kts.xlsx",
+  "loaded_at": "2026-07-31"
+}

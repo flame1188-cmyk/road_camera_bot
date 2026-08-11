@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "npbdd.plans.json",
+  "title": "NPBDD Plans (target Tp per year from passport)",
+  "type": "object",
+  "required": ["region_code", "region_name", "plan_tr", "source", "loaded_at"],
+  "properties": {
+    "region_code": {"type": "string", "pattern": "^[0-9]{2,4}$"},
+    "region_name": {"type": "string", "minLength": 1},
+    "plan_tr": {
+      "type": "object",
+      "patternProperties": {
+        "^[0-9]{4}$": {"type": "number", "minimum": 0}
+      },
+      "additionalProperties": false
+    },
+    "source": {"type": "string", "minLength": 1},
+    "loaded_at": {"type": "string", "format": "date"}
+  },
+  "additionalProperties": false
+}

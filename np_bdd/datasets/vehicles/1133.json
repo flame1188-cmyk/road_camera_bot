@@ -1,0 +1,12 @@
+{
+  "region_code": "1133",
+  "region_name": "Кировская область",
+  "vehicles_by_year": {
+    "2023": 472842,
+    "2024": 479352,
+    "2025": 530507,
+    "2026": 530507
+  },
+  "source": "Excel: vehicles_kts.xlsx",
+  "loaded_at": "2026-07-31"
+}

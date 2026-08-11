@@ -1,0 +1,12 @@
+{
+  "region_code": "1141",
+  "region_name": "Ленинградская область",
+  "vehicles_by_year": {
+    "2023": 785937,
+    "2024": 792240,
+    "2025": 855720,
+    "2026": 855720
+  },
+  "source": "Excel: vehicles_kts.xlsx",
+  "loaded_at": "2026-07-31"
+}

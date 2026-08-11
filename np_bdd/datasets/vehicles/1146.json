@@ -1,0 +1,12 @@
+{
+  "region_code": "1146",
+  "region_name": "Московская область",
+  "vehicles_by_year": {
+    "2023": 3366344,
+    "2024": 3452977,
+    "2025": 3742568,
+    "2026": 3742568
+  },
+  "source": "Excel: vehicles_kts.xlsx",
+  "loaded_at": "2026-07-31"
+}

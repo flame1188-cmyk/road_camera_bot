@@ -1,0 +1,12 @@
+{
+  "region_code": "1160",
+  "region_name": "Ростовская область",
+  "vehicles_by_year": {
+    "2023": 1771843,
+    "2024": 1800071,
+    "2025": 1775984,
+    "2026": 1775984
+  },
+  "source": "Excel: vehicles_kts.xlsx",
+  "loaded_at": "2026-07-31"
+}
